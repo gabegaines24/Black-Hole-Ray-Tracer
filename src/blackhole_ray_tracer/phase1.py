@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
 from math import cos, sin
 
 import numpy as np
@@ -62,11 +63,22 @@ def schwarzschild_u_derivs(_: float, y: np.ndarray, m: float) -> np.ndarray:
 
 @dataclass
 class RayTraceResult:
-    status: str
+    status: "RayStatus"
+    steps_taken: int
+    max_steps: int
+    termination_phi: float
+    termination_r: float
     phis: np.ndarray
     rs: np.ndarray
     xs: np.ndarray
     ys: np.ndarray
+
+
+class RayStatus(str, Enum):
+    CAPTURED = "captured"
+    ESCAPED = "escaped"
+    MAX_STEPS = "max_steps"
+    NUMERICAL_ERROR = "numerical_error"
 
 
 def trace_single_schwarzschild_ray(
@@ -95,15 +107,27 @@ def trace_single_schwarzschild_ray(
     rs: list[float] = []
     xs: list[float] = []
     ys: list[float] = []
-    status = "max_steps"
+    status = RayStatus.MAX_STEPS
+    termination_r = float("nan")
+    steps_taken = 0
 
-    for _ in range(steps):
+    for step_idx in range(steps):
         u = y[0]
+        if not np.isfinite(u):
+            status = RayStatus.NUMERICAL_ERROR
+            steps_taken = step_idx
+            break
         if u <= 0.0:
-            status = "escaped"
+            status = RayStatus.ESCAPED
+            termination_r = float("inf")
+            steps_taken = step_idx
             break
 
         r = 1.0 / u
+        if not np.isfinite(r):
+            status = RayStatus.NUMERICAL_ERROR
+            steps_taken = step_idx
+            break
         x = r * cos(phi)
         y_cart = r * sin(phi)
 
@@ -111,12 +135,14 @@ def trace_single_schwarzschild_ray(
         rs.append(r)
         xs.append(x)
         ys.append(y_cart)
+        termination_r = r
+        steps_taken = step_idx + 1
 
         if r < r_capture:
-            status = "captured"
+            status = RayStatus.CAPTURED
             break
         if r > r_escape:
-            status = "escaped"
+            status = RayStatus.ESCAPED
             break
 
         y = rk4_step(schwarzschild_u_derivs, phi, y, dphi, m)
@@ -124,6 +150,10 @@ def trace_single_schwarzschild_ray(
 
     return RayTraceResult(
         status=status,
+        steps_taken=steps_taken,
+        max_steps=steps,
+        termination_phi=phi,
+        termination_r=termination_r,
         phis=np.array(phis),
         rs=np.array(rs),
         xs=np.array(xs),
@@ -132,7 +162,10 @@ def trace_single_schwarzschild_ray(
 
 
 def summarize_phase1_a_b() -> str:
-    """Return a compact text summary for CLI printing."""
+    """Return a compact text summary for CLI printing.
+
+    Includes Step C style termination diagnostics for the single-ray run.
+    """
     max_err, mean_err = run_rk4_sanity()
     result = trace_single_schwarzschild_ray()
     if len(result.rs) > 0:
@@ -147,10 +180,13 @@ def summarize_phase1_a_b() -> str:
         f"- max |x_num - x_exact|: {max_err:.3e}\n"
         f"- mean |x_num - x_exact|: {mean_err:.3e}\n\n"
         "Step B (single Schwarzschild ray)\n"
-        f"- status: {result.status}\n"
+        f"- status: {result.status.value}\n"
+        f"- steps: {result.steps_taken}/{result.max_steps}\n"
         f"- samples: {len(result.rs)}\n"
         f"- min radius: {r_min:.3f}\n"
         f"- final radius: {r_last:.3f}\n"
+        f"- termination radius: {result.termination_r:.3f}\n"
+        f"- termination phi: {result.termination_phi:.3f}\n"
         f"- schwarzschild radius (2M): {2.0 * 1.0:.3f}\n"
         f"- photon sphere (3M): {3.0 * 1.0:.3f}\n"
         "\nTip: change impact parameter b in trace_single_schwarzschild_ray()."
