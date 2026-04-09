@@ -20,6 +20,7 @@ Black hole ray tracer focused on null geodesic integration with a high-performan
 ```bash
 uv sync
 uv run blackhole-ray-tracer
+uv run blackhole-ray-tracer -- --phase1-ab
 ```
 
 Install optional groups as needed:
