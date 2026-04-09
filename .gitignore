@@ -1,0 +1,37 @@
+# --- Project Files ---
+plan.txt
+
+# --- C / Compiled Binaries ---
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.exe
+build/
+dist/
+
+# --- Python / Environments ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+
+# --- Machine Learning Artifacts ---
+# Ignore large model weights and datasets
+*.pth
+*.pt
+*.h5
+*.joblib
+data/
+models/
+!models/README.md
+
+# --- IDEs and OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
