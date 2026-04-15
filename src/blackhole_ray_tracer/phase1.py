@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from math import cos, sin
+from typing import Any
 
 import numpy as np
 
@@ -159,6 +160,112 @@ def trace_single_schwarzschild_ray(
         xs=np.array(xs),
         ys=np.array(ys),
     )
+
+
+def step_b_trajectory_is_finite(result: RayTraceResult) -> bool:
+    """True if all recorded r, phi samples are finite (Step B smoothness check)."""
+    if len(result.rs) == 0:
+        return True
+    return bool(np.all(np.isfinite(result.rs)) and np.all(np.isfinite(result.phis)))
+
+
+@dataclass
+class BatchRayRow:
+    """One row in a Step D sweep over impact parameter."""
+
+    impact_b: float
+    status: RayStatus
+    r_min: float
+    phi_sweep_rad: float
+    termination_r: float
+    steps_taken: int
+
+
+def batch_schwarzschild_rays(
+    b_values: np.ndarray | list[float],
+    m: float = 1.0,
+    **kwargs: Any,
+) -> list[BatchRayRow]:
+    """Step D: shoot many rays with different impact parameters.
+
+    For each `b`, runs `trace_single_schwarzschild_ray(b=b, m=m, **kwargs)` and
+    records status plus compact trajectory statistics (deflection proxy: Δphi).
+    """
+    rows: list[BatchRayRow] = []
+    for b in b_values:
+        result = trace_single_schwarzschild_ray(b=float(b), m=m, **kwargs)
+        if len(result.rs) > 0:
+            r_min = float(np.min(result.rs))
+        else:
+            r_min = float("nan")
+        if len(result.phis) >= 2:
+            phi_sweep = float(result.phis[-1] - result.phis[0])
+        else:
+            phi_sweep = 0.0
+        rows.append(
+            BatchRayRow(
+                impact_b=float(b),
+                status=result.status,
+                r_min=r_min,
+                phi_sweep_rad=phi_sweep,
+                termination_r=float(result.termination_r),
+                steps_taken=result.steps_taken,
+            )
+        )
+    return rows
+
+
+def format_step_d_table(
+    rows: list[BatchRayRow],
+    m: float = 1.0,
+) -> str:
+    """Human-readable table: b, status, r_min, Δphi, steps, small-angle 4M/b (theory)."""
+    lines: list[str] = [
+        "Step D (batch rays over impact parameter)",
+        f"  {'b':>8}  {'status':>12}  {'r_min':>10}  {'Δphi':>10}  {'r_term':>10}  {'steps':>6}  {'4M/b':>10}",
+    ]
+    for row in rows:
+        theory = 4.0 * m / row.impact_b if row.impact_b > 0 else float("nan")
+        r_term = row.termination_r
+        if r_term == float("inf"):
+            r_term_s = f"{'inf':>10}"
+        elif not np.isfinite(r_term):
+            r_term_s = f"{'nan':>10}"
+        else:
+            r_term_s = f"{r_term:10.3f}"
+        lines.append(
+            f"  {row.impact_b:8.4f}  {row.status.value:>12}  {row.r_min:10.4f}  "
+            f"{row.phi_sweep_rad:10.4f}  {r_term_s}  {row.steps_taken:6d}  {theory:10.6f}"
+        )
+    captured = sum(1 for r in rows if r.status == RayStatus.CAPTURED)
+    escaped = sum(1 for r in rows if r.status == RayStatus.ESCAPED)
+    other = len(rows) - captured - escaped
+    lines.append(
+        f"- counts: captured={captured}, escaped={escaped}, other={other} (total={len(rows)})"
+    )
+    lines.append(
+        "- Δphi is phi_last - phi_first along the integration (bending proxy); 4M/b is weak-field lensing scale."
+    )
+    return "\n".join(lines)
+
+
+def format_step_b_log(result: RayTraceResult, first_n: int = 50) -> str:
+    """Step B: first N (r, phi) rows for debugging; plan calls for ~50 steps logged."""
+    lines: list[str] = [
+        "Step B (single Schwarzschild ray)",
+        f"- status: {result.status.value}",
+        f"- steps recorded: {len(result.rs)} (integration steps taken: {result.steps_taken})",
+        f"- first {min(first_n, len(result.rs))} samples (r, phi):",
+        f"  {'step':>5}  {'r':>12}  {'phi':>12}",
+    ]
+    n = min(first_n, len(result.rs))
+    for i in range(n):
+        r_i = float(result.rs[i])
+        phi_i = float(result.phis[i])
+        lines.append(f"  {i:5d}  {r_i:12.6f}  {phi_i:12.6f}")
+    finite = step_b_trajectory_is_finite(result)
+    lines.append(f"- trajectory finite (no NaN/inf): {finite}")
+    return "\n".join(lines)
 
 
 def summarize_phase1_a_b() -> str:
