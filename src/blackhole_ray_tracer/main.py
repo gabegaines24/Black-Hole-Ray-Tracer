@@ -14,6 +14,9 @@ from .phase1 import (
 )
 from .phase1_image import render_einstein_ring_image, write_ppm_rgb
 from .phase1_tuning import PRESETS, format_step_f_report
+from .phase2_render import render_schwarzschild_3d_image
+from .phase2_report import format_phase2_report, render_config_from_preset
+from .phase2_types import Phase2RenderConfig
 
 
 def main() -> None:
@@ -45,6 +48,16 @@ def main() -> None:
         help="Step F: print tuning presets and single-ray benchmark (dphi vs speed / r_min).",
     )
     parser.add_argument(
+        "--phase2-render",
+        action="store_true",
+        help="Phase 2: 3D Schwarzschild pinhole PPM (shadow + sky; slow at high res).",
+    )
+    parser.add_argument(
+        "--phase2-report",
+        action="store_true",
+        help="Phase 2: print presets and single-ray dlambda benchmark.",
+    )
+    parser.add_argument(
         "--ppm-out",
         type=str,
         default="einstein_ring.ppm",
@@ -58,9 +71,42 @@ def main() -> None:
         default=None,
         help="Step E: use fast/balanced/quality preset (overrides img size and integration settings)",
     )
+    parser.add_argument(
+        "--phase2-preset",
+        choices=("fast", "balanced", "quality"),
+        default=None,
+        help="Phase 2: use fast/balanced/quality (overrides phase2 size and integration; use with --phase2-render)",
+    )
+    parser.add_argument(
+        "--phase2-out",
+        type=str,
+        default="phase2_schwarzschild_3d.ppm",
+        help="Output PPM for --phase2-render",
+    )
     args = parser.parse_args()
 
     console = Console()
+    if args.phase2_report:
+        console.print(format_phase2_report())
+        return
+    if args.phase2_render:
+        if args.phase2_preset is not None:
+            cfg = render_config_from_preset(args.phase2_preset, m=1.0, sky_mode="gradient")
+        else:
+            cfg = Phase2RenderConfig(
+                width=args.img_width,
+                height=args.img_height,
+                m=1.0,
+                dlambda=0.06,
+                max_steps=8000,
+            )
+        rgb, stats = render_schwarzschild_3d_image(cfg)
+        write_ppm_rgb(args.phase2_out, rgb)
+        preset_note = f", preset [bold]{args.phase2_preset}[/bold]" if args.phase2_preset else ""
+        console.print(
+            f"Phase 2: wrote [bold]{args.phase2_out}[/bold] ({cfg.width}x{cfg.height} PPM){preset_note}; stats {stats}"
+        )
+        return
     if args.phase1_step_f:
         console.print(format_step_f_report())
         return
@@ -103,7 +149,7 @@ def main() -> None:
         console.print(summarize_phase1_a_b())
         return
     console.print(
-        "blackhole-ray-tracer bootstrap ready. Use --phase1-ab, --phase1-step-b, --phase1-step-d, --phase1-step-e, or --phase1-step-f."
+        "blackhole-ray-tracer bootstrap ready. Use --phase1-ab … --phase1-step-f, or Phase 2: --phase2-report / --phase2-render [--phase2-preset]."
     )
 
 
