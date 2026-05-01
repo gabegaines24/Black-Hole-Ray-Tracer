@@ -15,6 +15,15 @@ Black hole ray tracer focused on null geodesic integration with a high-performan
 - `ml/`: surrogate model and data generation/training code.
 - `src/blackhole_ray_tracer/`: Python package entrypoints and orchestration helpers.
 
+## Documentation (canonical references)
+
+- **`docs/OVERVIEW.md`** — layered architecture (Python vs planned C/bridge/ml), conventions, commands.
+- **`docs/ROADMAP.md`** — phased milestones, acceptance criteria, CLI cheat sheet, gap checklist.
+- **`docs/STATE_API.md`** — draft SoA / `RayStatus` FFI contract for kernel + bridge.
+- **`docs/AGENT_PROMPT.md`** — per-session starter (paste at top of Composer / Claude threads).
+- **`.cursorrules`** — persistent Cursor rules (always on).
+- **`AGENTS.md`** — short rules for humans and agents.
+
 ## Quickstart
 
 ```bash
@@ -45,7 +54,7 @@ PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --render --pr
 PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --report
 ```
 
-**Note:** The C kernel in `kernel/` is not yet wired to Phase 2; the above uses `numpy` + shared `rk4_step` from Phase 1.
+**Note:** `kernel/` contains a standalone C **RK4** core plus a **harmonic** Phase A parity demo (`make -C kernel`); Schwarzschild geodesics are **not** in C yet. Phase 2 rendering still uses NumPy + `rk4_step` from Phase 1.
 
 Install optional groups as needed:
 
@@ -73,3 +82,4 @@ uv sync --group ml
 - Lint: `uv run --group dev ruff check .`
 - Type check: `uv run --group dev mypy src`
 - Tests: `uv run --group dev pytest`
+- Kernel (optional): `make -C kernel && ./kernel/harmonic_demo 0.02 8 1` — parity exercised by `tests/test_kernel_harmonic_parity.py` when a C compiler is available (`SKIP_KERNEL_TESTS=1` to skip).
