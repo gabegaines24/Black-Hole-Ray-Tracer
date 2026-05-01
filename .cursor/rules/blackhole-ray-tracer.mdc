@@ -1,0 +1,10 @@
+---
+description: Pointer to canonical Cursor rules (.cursorrules)
+globs: ["src/**/*", "tests/**/*", "docs/**/*", "kernel/**/*", "bridge/**/*", "ml/**/*"]
+---
+
+Full persistent rules live in **`.cursorrules`** at repo root.
+
+- Read [docs/OVERVIEW.md](docs/OVERVIEW.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
+- When uncertain about code or APIs, **check files** rather than guessing.
+- See also [docs/AGENT_PROMPT.md](docs/AGENT_PROMPT.md) and [AGENTS.md](AGENTS.md).
