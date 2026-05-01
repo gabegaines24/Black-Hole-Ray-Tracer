@@ -11,8 +11,14 @@ plan.txt
 build/
 dist/
 
-# --- Python / Environments ---
-__pycache__/
+# --- Ray tracer binary outputs ---
+*.ppm
+
+
+# Kernel build artefacts
+kernel/harmonic_demo
+kernel/harmonic_demo.exe
+
 *.py[cod]
 *$py.class
 .venv/
