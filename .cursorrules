@@ -1,0 +1,108 @@
+# Cursor rules — blackhole_ray_tracer
+# Place this file at the repo root as `.cursorrules`.
+# These rules are ALWAYS active. Per-session goals go in the Composer session block (AGENT_PROMPT.md).
+
+## Project identity
+
+This is **blackhole_ray_tracer**: a Python-first null-geodesic ray tracer for Schwarzschild (and eventually Kerr) spacetimes.
+Architecture direction: Python prototypes → C kernel (`kernel/`) → pybind11 bridge (`bridge/`) → optional GPU path.
+
+---
+
+## Hard rules (never violate)
+
+1. **Verify before assuming.** Before referencing any file under `kernel/`, `bridge/`, or `ml/`, list the directory first. Those directories may be empty scaffolds. Never claim an implementation exists without seeing it.
+
+2. **Run tests before claiming completion.** After any substantive Python edit, run `uv run pytest`. Do not mark a task done if tests fail or were not run.
+
+3. **Minimal diffs.** Change only what is required for the stated goal. Do not refactor adjacent code, rename symbols, or reformat files unless that is the explicit task.
+
+4. **Preserve phase naming.** Module names follow the pattern `phase1_*`, `phase2_*`, future `phaseN_*`, `kernel/`, `bridge/`, `ml/`. Do not flatten, rename, or merge phases.
+
+5. **Reuse `rk4_step`.** The shared integrator lives in `phase1.py`. Reuse it everywhere in Python unless the task is explicitly porting it to the C kernel.
+
+6. **Geometry-correct language.** Units are geometric: G = c = 1, Schwarzschild radius r_s = 2M. Never write "real-time" or imply interactive frame rates for pure-Python renders — they are inherently slow. Use "accuracy-oriented" wording.
+
+7. **Do not commit PPM files.** Render outputs (`*.ppm`) are large and should never be staged or committed. Confirm `.gitignore` includes `*.ppm` before any render-related change.
+
+---
+
+## Toolchain
+
+```
+uv sync                          # install deps
+uv sync --group dev              # add pytest, ruff, mypy
+uv run pytest                    # run all tests
+uv run ruff check src tests      # lint
+uv run mypy src                  # type-check (dev group)
+uv run blackhole-ray-tracer --help
+```
+
+Always prefer `uv run <tool>` over bare `python` or `pytest` invocations.
+
+---
+
+## Source layout (what is implemented)
+
+```
+src/blackhole_ray_tracer/
+  phase1.py              # shared rk4_step, equatorial Schwarzschild, batch helpers
+  phase1_driver.py       # CLI steps A–F
+  phase1_image.py        # PPM writer, Einstein ring
+  phase1_tuning.py       # presets + benchmark report
+  phase2_christoffel.py  # Christoffel symbols
+  phase2_geodesic.py     # 3D null RK4 in affine parameter
+  phase2_camera.py       # static observer pinhole initializer
+  phase2_types.py        # shared types
+  phase2_render.py       # pinhole image loop, PPM output
+  phase2_report.py       # presets + benchmark
+  phase2_driver.py       # CLI for phase 2
+  main.py                # blackhole-ray-tracer console script entry
+
+tests/
+  test_phase1_extensions.py
+  test_phase2.py
+
+docs/
+  OVERVIEW.md
+  ROADMAP.md
+  AGENT_PROMPT.md
+
+kernel/
+  include/bh_rt_rk4.h
+  src/bh_rt_rk4.c
+  src/demo_harmonic.c    # Phase A harmonic parity CLI
+  Makefile README.md
+
+bridge/    # PLANNED — may be empty; verify before touching
+ml/        # PLANNED — may be empty; verify before touching
+```
+
+---
+
+## Workflow for every task
+
+1. **Identify the ROADMAP phase** your change targets and which acceptance rows it satisfies.
+2. **Cite concrete file paths** in all explanations (`src/blackhole_ray_tracer/phase2_render.py`, etc.).
+3. **When uncertain**, say so explicitly and list the relevant files rather than guessing at contents.
+4. **When adding C / GPU / ML logic**, sketch the intended API in a comment block or update `docs/ROADMAP.md` before writing implementation, so the next session starts aligned.
+5. **Do not touch docs/ROADMAP.md acceptance rows** unless the milestone is genuinely complete and tests pass.
+
+---
+
+## Phase boundaries (what belongs where)
+
+| Change type | Target location |
+|---|---|
+| New 2D Schwarzschild experiment | `phase1.py` helpers or `phase1_*` modules |
+| New 3D prototype before C kernel | `phase2_*` modules + minimal driver changes |
+| Shared Python integrator primitive | Keep in `phase1.py` until kernel deliberately duplicates it |
+| C performance kernel | `kernel/` + `bridge/`; document API in `ROADMAP.md` first |
+| Kerr / Boyer-Lindquist coordinates | Future `phase3_*` or `kerr_*`; BL coordinate choice must be documented in ROADMAP before implementation begins |
+| ML surrogate | `ml/`; dataset format must be documented before training code |
+
+---
+
+## On uncertainty
+
+If you are not sure whether a file exists, a function is implemented, or a test covers a case — **say so and check** rather than proceeding on an assumption. A wrong assumption in physics code produces silently incorrect ray paths, which are harder to debug than a failed test.
