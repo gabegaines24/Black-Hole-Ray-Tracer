@@ -18,6 +18,8 @@ dist/
 # Kernel build artefacts
 kernel/harmonic_demo
 kernel/harmonic_demo.exe
+kernel/schwarzschild_demo
+kernel/schwarzschild_demo.exe
 
 *.py[cod]
 *$py.class
