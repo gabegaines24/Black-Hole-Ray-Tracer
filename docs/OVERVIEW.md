@@ -23,7 +23,7 @@ Tooling: `pyproject.toml` — `uv` for env/lockfile; dependency group `dev` has 
 
 ### Planned / scaffold only (verify before assuming implementation)
 
-Directories **`kernel/`**, **`bridge/`**, and **`ml/`** are described in the README as the long-term split (pure C integration, pybind11 bridge, ML surrogate pipeline). **`kernel/`** now hosts a generic **RK4** step and a **harmonic oscillator** demo (`make -C kernel`). **`bridge/`** and **`ml/`** may still be **empty** until those milestones start. Do not assume a pybind extension exists until you see it under `bridge/`.
+Directories **`kernel/`**, **`bridge/`**, and **`ml/`** are described in the README as the long-term split (pure C integration, pybind11 bridge, ML surrogate pipeline). **`kernel/`** now hosts a generic **RK4** step, the Phase A **harmonic** demo, and a **Schwarzschild equatorial \(u(\phi)\)** tracer wired for pytest parity (`make -C kernel`). **`bridge/`** and **`ml/`** may still be **empty** until those milestones start. Do not assume a pybind extension exists until you see it under `bridge/`.
 
 High-level layering:
 
@@ -77,5 +77,6 @@ uv run mypy src       # after dev group
 | `src/blackhole_ray_tracer/phase2_report.py` | Phase 2 presets + benchmark text |
 | `src/blackhole_ray_tracer/phase2_driver.py` | Phase 2 `--render` / `--report` CLI |
 | `kernel/include/bh_rt_rk4.h`, `kernel/src/bh_rt_rk4.c` | Shared C **RK4** step (no Python) |
-| `kernel/src/demo_harmonic.c`, `kernel/Makefile` | Phase A harmonic parity demo; `make -C kernel` |
+| `kernel/include/bh_rt_schwarzschild_u.h`, `kernel/src/bh_rt_schwarzschild_u.c` | Schwarzschild 2D \(u(\phi)=1/r\) ray trace (parity with `phase1.py`) |
+| `kernel/src/demo_harmonic.c`, `kernel/src/demo_schwarzschild_u.c`, `kernel/Makefile` | RK4 + Schwarzschild CLI demos (`make -C kernel`) |
 | `kernel/README.md` | Kernel build and next steps |
