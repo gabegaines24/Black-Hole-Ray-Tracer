@@ -1,0 +1,3 @@
+recursive-include bridge *.cpp
+recursive-include kernel/include *.h
+recursive-include kernel/src *.c
