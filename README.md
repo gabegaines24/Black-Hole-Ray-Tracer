@@ -79,6 +79,8 @@ uv sync --group ml
 
 ## Development
 
+- **Git contributor email:** use **`gabegaines24@gmail.com`** (verified on GitHub for contribution graph credit). Repo-local: `git config user.email gabegaines24@gmail.com`.
+- **Native Phase 2 extension:** `uv sync` / `pip install -e .` compiles **`blackhole_ray_tracer._native_phase2`** when a C toolchain is available (MSVC / MinGW / clang). Skip is normal without compilers; parity test `tests/test_bridge_native_phase2.py` skips accordingly.
 - Lint: `uv run --group dev ruff check .`
 - Type check: `uv run --group dev mypy src`
 - Tests: `uv run --group dev pytest`
