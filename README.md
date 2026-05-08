@@ -54,7 +54,7 @@ PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --render --pr
 PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --report
 ```
 
-**Note:** `kernel/` contains a standalone C **RK4** core plus a **harmonic** Phase A parity demo (`make -C kernel`); Schwarzschild geodesics are **not** in C yet. Phase 2 rendering still uses NumPy + `rk4_step` from Phase 1.
+**Note:** `kernel/` contains a standalone C **RK4** core, harmonic Phase A parity, equatorial Schwarzschild \(u(\phi)\), and **3D Schwarzschild null geodesics** (`bh_rt_schwarzschild_phase2_trace`), verified by pytest against `phase2_geodesic` when a C toolchain is present. Phase **2 rendering** (`phase2_render.py`) remains Python + NumPy orchestration unless you explicitly wire in the kernel later.
 
 Install optional groups as needed:
 

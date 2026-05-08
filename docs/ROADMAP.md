@@ -68,14 +68,14 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | **`kernel/` RK4 core** | Explicit RK4 step for future batched RHS | Done: [`kernel/src/bh_rt_rk4.c`](../kernel/src/bh_rt_rk4.c), [`kernel/include/bh_rt_rk4.h`](../kernel/include/bh_rt_rk4.h) |
 | **Phase A harmonic parity** | C vs `phase1.run_rk4_sanity` | Done: [`kernel/src/demo_harmonic.c`](../kernel/src/demo_harmonic.c), `make -C kernel`, [`tests/test_kernel_harmonic_parity.py`](../tests/test_kernel_harmonic_parity.py) (skips if no C toolchain) |
 | **Schwarzschild \(2D equatorial\) kernel** | `u(\phi)=1/r` loop vs `phase1.trace_single_schwarzschild_ray` | Done: [`kernel/include/bh_rt_schwarzschild_u.h`](../kernel/include/bh_rt_schwarzschild_u.h), [`kernel/src/bh_rt_schwarzschild_u.c`](../kernel/src/bh_rt_schwarzschild_u.c), [`kernel/src/demo_schwarzschild_u.c`](../kernel/src/demo_schwarzschild_u.c), [`tests/test_kernel_schwarzschild_u_parity.py`](../tests/test_kernel_schwarzschild_u_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
-| **Schwarzschild / Phase 2 \(3D Christoffel\) kernel** | Match `phase2_geodesic` Python RHS + termination | Not started |
+| **Schwarzschild / Phase 2 \(3D Christoffel\) kernel** | Match `phase2_geodesic` Python RHS + termination | Done: [`kernel/include/bh_rt_schwarzschild_phase2.h`](../kernel/include/bh_rt_schwarzschild_phase2.h), [`kernel/src/bh_rt_schwarzschild_phase2.c`](../kernel/src/bh_rt_schwarzschild_phase2.c), [`tests/test_kernel_phase2_parity.py`](../tests/test_kernel_phase2_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
 | **`bridge/`** | pybind11 exposing batch trace | Not started |
 
 **Acceptance**
 
 - `make -C kernel` builds **`harmonic_demo`** and **`schwarzschild_demo`** where `cc`/`gcc`/`clang` exists.
 - Full `pytest` run passes (kernel parity tests skip without a toolchain or when `SKIP_KERNEL_TESTS=1`).
-- 3D Schwarzschild (Christoffel) kernel path + `bridge/` build remain **TBD**.
+- 3D Schwarzschild (Christoffel) single-ray kernel path exercises RK4 parity vs Python Phase 2; **`bridge/`** build remains **TBD**.
 
 ---
 
@@ -153,7 +153,7 @@ Installation: typically `PYTHONPATH=src` when developing from checkout without r
 
 - [x] `kernel/` generic RK4 + Phase A harmonic parity (`make -C kernel`, pytest).
 - [x] Schwarzschild **2D equatorial** `u(\phi)` tracer in C + discrete parity vs `phase1.trace_single_schwarzschild_ray` (`bh_rt_schwarzschild_u_*`, pytest).
-- [ ] Schwarzschild / Phase **3D Christoffel** geodesics in C + parity vs `phase2_geodesic` Python.
+- [x] Schwarzschild / Phase **3D Christoffel** geodesics in C + parity vs `phase2_geodesic` Python.
 - [ ] Populate `bridge/` and wire optional import from Python render path.
 - [x] **Ignore `*.ppm` in `.gitignore`** — render outputs are binary and bloat history; keep them untracked (policy; see repo `.gitignore`).
 - [ ] Kerr: coordinate choice (BL) documented before implementation.
