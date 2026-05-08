@@ -13,4 +13,4 @@ Current surface:
 |------------------|-------------|
 | [`module_phase2.cpp`](module_phase2.cpp) | [`bh_rt_schwarzschild_phase2_trace`](../kernel/include/bh_rt_schwarzschild_phase2.h) |
 
-Build hooks live in repo-root [`setup.py`](../setup.py) (compiled extension [`blackhole_ray_tracer._native_phase2`](../src/blackhole_ray_tracer/)).
+Build hooks live in repo-root [`setup.py`](../setup.py); Python helpers in [`native_phase2.py`](../src/blackhole_ray_tracer/native_phase2.py). Import `blackhole_ray_tracer._native_phase2` after an editable/`uv` install with compilers enabled.
