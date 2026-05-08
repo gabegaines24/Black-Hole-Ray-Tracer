@@ -18,6 +18,8 @@ ext_modules = [
         "blackhole_ray_tracer._native_phase2",
         [
             src("bridge", "module_phase2.cpp"),
+            src("kernel", "src", "bh_rt_rk4.c"),
+            src("kernel", "src", "bh_rt_schwarzschild_phase2.c"),
         ],
         include_dirs=[
             src("kernel", "include"),
