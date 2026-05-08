@@ -80,7 +80,7 @@ uv sync --group ml
 ## Development
 
 - **Git contributor email:** use **`gabegaines24@gmail.com`** (verified on GitHub for contribution graph credit). Repo-local: `git config user.email gabegaines24@gmail.com`.
-- **Native Phase 2 extension:** `uv sync` / `pip install -e .` compiles **`blackhole_ray_tracer._native_phase2`** when a C toolchain is available (MSVC / MinGW / clang). Skip is normal without compilers; parity test `tests/test_bridge_native_phase2.py` skips accordingly.
+- **Native Phase 2 extension:** On **Linux/macOS**, `uv sync` builds **`blackhole_ray_tracer._native_phase2`** when compilers are installed. On **Windows**, compiling is **opt‑in**: install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), then `BLACKHOLE_BUILD_NATIVE=1 uv sync`. Otherwise the package installs without the extension; `tests/test_bridge_native_phase2.py` skips accordingly. Unix users can disable with `BLACKHOLE_SKIP_NATIVE=1 uv sync`.
 - Lint: `uv run --group dev ruff check .`
 - Type check: `uv run --group dev mypy src`
 - Tests: `uv run --group dev pytest`
