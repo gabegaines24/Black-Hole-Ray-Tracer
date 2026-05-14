@@ -31,6 +31,7 @@ kernel/schwarzschild_demo.exe
 venv/
 env/
 .env
+.pytest_cache/
 
 # --- Machine Learning Artifacts ---
 # Ignore large model weights and datasets
