@@ -13,6 +13,7 @@ dist/
 
 # setuptools / editable install metadata (do not commit)
 *.egg-info/
+.eggs/
 
 # --- Ray tracer binary outputs ---
 *.ppm
