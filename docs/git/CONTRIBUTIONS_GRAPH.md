@@ -12,3 +12,14 @@ Commits only affect your profile activity graph **after** they appear on GitHub.
 4. **Repository visibility** — If the repo is private, enable “Include private contributions on my profile” under GitHub profile contribution settings.
 
 If a commit locally shows correct author (`git log -1 --format=%ae`) but the graph stays empty after a refresh, usual causes are: not pushed yet, push went to another remote/branch without a merged PR to default branch, or the email used is not verified on GitHub.
+
+## Windows / cloud-synced working trees
+
+If `git status` lists many files as **modified** but `git diff` is empty, the index may be out of sync with filesystem mtimes (common with **OneDrive** / cloud sync). Run:
+
+```bash
+git update-index --refresh
+```
+
+Then re-check `git status` before assuming there are real edits to commit.
+
