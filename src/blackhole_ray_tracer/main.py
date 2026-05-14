@@ -78,10 +78,9 @@ def main() -> None:
         help="Phase 2: use fast/balanced/quality (overrides phase2 size and integration; use with --phase2-render)",
     )
     parser.add_argument(
-        "--phase2-out",
-        type=str,
-        default="phase2_schwarzschild_3d.ppm",
-        help="Output PPM for --phase2-render",
+        "--phase2-native",
+        action="store_true",
+        help="With --phase2-render: trace each ray via C extension (_native_phase2); requires build.",
     )
     args = parser.parse_args()
 
@@ -91,7 +90,12 @@ def main() -> None:
         return
     if args.phase2_render:
         if args.phase2_preset is not None:
-            cfg = render_config_from_preset(args.phase2_preset, m=1.0, sky_mode="gradient")
+            cfg = render_config_from_preset(
+                args.phase2_preset,
+                m=1.0,
+                sky_mode="gradient",
+                use_native_phase2=args.phase2_native,
+            )
         else:
             cfg = Phase2RenderConfig(
                 width=args.img_width,
@@ -99,6 +103,7 @@ def main() -> None:
                 m=1.0,
                 dlambda=0.06,
                 max_steps=8000,
+                use_native_phase2=args.phase2_native,
             )
         rgb, stats = render_schwarzschild_3d_image(cfg)
         write_ppm_rgb(args.phase2_out, rgb)

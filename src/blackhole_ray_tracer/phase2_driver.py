@@ -49,10 +49,9 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=8000, help="Max RK4 steps per ray")
     parser.add_argument("--r-escape", type=float, default=80.0, help="Escape radius")
     parser.add_argument(
-        "--sky",
-        choices=("gradient", "flat"),
-        default="gradient",
-        help="Background for escaped rays",
+        "--native",
+        action="store_true",
+        help="Use C extension per ray (_native_phase2); requires build",
     )
     args = parser.parse_args()
 
@@ -65,7 +64,9 @@ def main() -> None:
         return
 
     if args.preset is not None:
-        cfg = render_config_from_preset(args.preset, m=args.m, sky_mode=args.sky)
+        cfg = render_config_from_preset(
+            args.preset, m=args.m, sky_mode=args.sky, use_native_phase2=args.native
+        )
     else:
         cfg = Phase2RenderConfig(
             width=args.width,
@@ -77,6 +78,7 @@ def main() -> None:
             max_steps=args.max_steps,
             r_escape=args.r_escape,
             sky_mode=args.sky,
+            use_native_phase2=args.native,
         )
     rgb, stats = render_schwarzschild_3d_image(cfg)
     write_ppm_rgb(args.out, rgb)
