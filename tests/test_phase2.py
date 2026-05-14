@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from blackhole_ray_tracer.native_phase2 import native_phase2_available
 from blackhole_ray_tracer.phase1 import RayStatus
 from blackhole_ray_tracer.phase1_image import write_ppm_rgb
 from blackhole_ray_tracer.phase2_camera import (
@@ -75,6 +77,7 @@ def test_render_tiny_image_smoke() -> None:
     assert "captured" in stats
     assert float(np.max(rgb)) <= 1.0
     assert stats["captured"] + stats["escaped"] + stats["other"] == 16
+    assert stats.get("backend") == "python"
     if stats["captured"] > 0:
         assert float(np.min(rgb)) < 0.1
 
@@ -97,3 +100,31 @@ def test_format_phase2_report_contains_sections() -> None:
 def test_render_config_from_preset() -> None:
     c = render_config_from_preset("fast", m=1.0)
     assert c.width == 24 and c.max_steps == 4000
+
+
+def test_render_native_raises_when_extension_missing() -> None:
+    if native_phase2_available():
+        pytest.skip("native extension present")
+    cfg = Phase2RenderConfig(
+        width=2,
+        height=2,
+        dlambda=0.12,
+        max_steps=500,
+        r_escape=80.0,
+        use_native_phase2=True,
+    )
+    with pytest.raises(RuntimeError, match="_native_phase2"):
+        render_schwarzschild_3d_image(cfg)
+
+
+def test_render_native_matches_python_when_extension_present() -> None:
+    if not native_phase2_available():
+        pytest.skip("native extension not built")
+    base = Phase2RenderConfig(width=4, height=4, dlambda=0.12, max_steps=1500, r_escape=80.0)
+    rgb_py, st_py = render_schwarzschild_3d_image(replace(base, use_native_phase2=False))
+    rgb_na, st_na = render_schwarzschild_3d_image(replace(base, use_native_phase2=True))
+    assert st_py["captured"] == st_na["captured"]
+    assert st_py["escaped"] == st_na["escaped"]
+    assert st_py["other"] == st_na["other"]
+    assert st_na.get("backend") == "native"
+    assert np.allclose(rgb_py, rgb_na, rtol=0.0, atol=1e-5)
