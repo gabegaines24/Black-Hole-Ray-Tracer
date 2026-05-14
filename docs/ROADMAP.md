@@ -50,7 +50,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 **Known gaps**
 
-- Phase 2 is **slow** per pixel (pure Python); no **C kernel** path yet for `phase2` rays.
+- Phase 2 render loop is still **Python-orchestrated** (per-pixel); optional **C per-ray** path when `use_native_phase2` + `_native_phase2` is installed (see `phase2_render`, `--phase2-native`).
 - No anti-aliasing, no accretion disk texture, no Kerr.
 
 **Acceptance (maintain)**
@@ -69,7 +69,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | **Phase A harmonic parity** | C vs `phase1.run_rk4_sanity` | Done: [`kernel/src/demo_harmonic.c`](../kernel/src/demo_harmonic.c), `make -C kernel`, [`tests/test_kernel_harmonic_parity.py`](../tests/test_kernel_harmonic_parity.py) (skips if no C toolchain) |
 | **Schwarzschild \(2D equatorial\) kernel** | `u(\phi)=1/r` loop vs `phase1.trace_single_schwarzschild_ray` | Done: [`kernel/include/bh_rt_schwarzschild_u.h`](../kernel/include/bh_rt_schwarzschild_u.h), [`kernel/src/bh_rt_schwarzschild_u.c`](../kernel/src/bh_rt_schwarzschild_u.c), [`kernel/src/demo_schwarzschild_u.c`](../kernel/src/demo_schwarzschild_u.c), [`tests/test_kernel_schwarzschild_u_parity.py`](../tests/test_kernel_schwarzschild_u_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
 | **Schwarzschild / Phase 2 \(3D Christoffel\) kernel** | Match `phase2_geodesic` Python RHS + termination | Done: [`kernel/include/bh_rt_schwarzschild_phase2.h`](../kernel/include/bh_rt_schwarzschild_phase2.h), [`kernel/src/bh_rt_schwarzschild_phase2.c`](../kernel/src/bh_rt_schwarzschild_phase2.c), [`tests/test_kernel_phase2_parity.py`](../tests/test_kernel_phase2_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
-| **`bridge/`** | pybind11 — single-ray Phase 3D trace (+ future batch API) | Started: repo-root setuptools + [`bridge/module_phase2.cpp`](../bridge/module_phase2.cpp) → **`blackhole_ray_tracer._native_phase2`**; pytest [`tests/test_bridge_native_phase2.py`](../tests/test_bridge_native_phase2.py) skips if extension not installed |
+| **`bridge/`** | pybind11 — single-ray Phase 3D trace (+ future batch API) | Started: [`bridge/module_phase2.cpp`](../bridge/module_phase2.cpp) → **`_native_phase2`**; optional **per-pixel** use from [`phase2_render.py`](../src/blackhole_ray_tracer/phase2_render.py) (`use_native_phase2`); pytest bridge parity skips if extension missing |
 
 **Acceptance**
 
@@ -119,7 +119,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | `--phase1-step-e` | Step E PPM (`--ppm-out`, `--img-width`, `--img-height`, `--preset`) |
 | `--phase1-step-f` | Step F report |
 | `--phase2-report` | Phase 2 presets + benchmark |
-| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags) |
+| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags; `--phase2-native` for C per-ray) |
 
 ### `python -m blackhole_ray_tracer.phase1_driver`
 
@@ -133,6 +133,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 |------|---------|
 | `--report` | Presets + `dlambda` benchmark |
 | `--render` | 3D PPM (`--out`, `--preset` or `--width`/`--height`/`--dlambda`/…) |
+| `--native` | Use C extension per ray when `_native_phase2` is installed |
 
 Installation: typically `PYTHONPATH=src` when developing from checkout without reinstall.
 
@@ -155,6 +156,8 @@ Installation: typically `PYTHONPATH=src` when developing from checkout without r
 - [x] `kernel/` generic RK4 + Phase A harmonic parity (`make -C kernel`, pytest).
 - [x] Schwarzschild **2D equatorial** `u(\phi)` tracer in C + discrete parity vs `phase1.trace_single_schwarzschild_ray` (`bh_rt_schwarzschild_u_*`, pytest).
 - [x] Schwarzschild / Phase **3D Christoffel** geodesics in C + parity vs `phase2_geodesic` Python.
-- [x] Populate `bridge/` with PyBind Phase 2 single-ray trace (**batch / render wiring** still open).
+- [x] Populate `bridge/` with PyBind Phase 2 single-ray trace.
+- [x] Optional **native per-ray** Phase 2 render path (`Phase2RenderConfig.use_native_phase2`, `--phase2-native`, `phase2_driver --native`).
+- [ ] SoA batched C trace + bridge (see [`STATE_API.md`](./STATE_API.md)); render still loops in Python.
 - [x] **Ignore `*.ppm` in `.gitignore`** — render outputs are binary and bloat history; keep them untracked (policy; see repo `.gitignore`).
 - [ ] Kerr: coordinate choice (BL) documented before implementation.

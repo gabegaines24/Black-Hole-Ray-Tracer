@@ -45,12 +45,16 @@ uv run blackhole-ray-tracer --phase2-render --img-width 32 --img-height 32 --pha
 
 # Faster preset
 uv run blackhole-ray-tracer --phase2-render --phase2-preset fast --phase2-out shadow_fast.ppm
+
+# Same image using C per-ray (requires `_native_phase2`; Windows: BLACKHOLE_BUILD_NATIVE=1 + MSVC)
+uv run blackhole-ray-tracer --phase2-render --phase2-preset fast --phase2-native --phase2-out shadow_native.ppm
 ```
 
 Or use the dedicated module (requires `PYTHONPATH=src` if running from source without install):
 
 ```bash
 PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --render --preset balanced --out phase2.ppm
+PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --render --native --preset fast --out phase2_native.ppm
 PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --report
 ```
 
