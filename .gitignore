@@ -11,6 +11,9 @@ plan.txt
 build/
 dist/
 
+# setuptools / editable install metadata (do not commit)
+*.egg-info/
+
 # --- Ray tracer binary outputs ---
 *.ppm
 
