@@ -10,6 +10,7 @@ from .phase1 import RayStatus
 from .phase2_camera import make_camera_from_config, initial_position_observer, static_observer_null_direction
 from .phase2_geodesic import trace_null_geodesic_3d
 from .phase2_types import Phase2RenderConfig
+from .native_phase2 import native_phase2_available, ray_status_from_native_phase2, schwarzschild_phase2_trace_native
 
 
 def _sky_rgb_from_direction(
@@ -43,25 +44,46 @@ def render_schwarzschild_3d_image(
     rgb = np.zeros((h, w, 3), dtype=np.float32)
     n_cap = n_esc = n_other = 0
 
+    use_native = cfg.use_native_phase2 and native_phase2_available()
+    if cfg.use_native_phase2 and not native_phase2_available():
+        raise RuntimeError(
+            "Phase2RenderConfig.use_native_phase2 is True but extension "
+            "`blackhole_ray_tracer._native_phase2` is not available. "
+            "On Windows set BLACKHOLE_BUILD_NATIVE=1 and install MSVC Build Tools, then `uv sync`."
+        )
+
     for j in range(h):
         for i in range(w):
             sx = 2.0 * (i + 0.5) / w - 1.0
             sy = 1.0 - 2.0 * (j + 0.5) / h
             v0 = static_observer_null_direction(cam, sx, sy)
-            result = trace_null_geodesic_3d(
-                x0,
-                v0,
-                m=cfg.m,
-                dlambda=cfg.dlambda,
-                max_steps=cfg.max_steps,
-                r_escape=cfg.r_escape,
-                r_horizon_epsilon=cfg.r_horizon_epsilon,
-                store_samples=False,
-            )
-            if result.status == RayStatus.CAPTURED:
+            if use_native:
+                y0 = np.concatenate([x0, v0])
+                nt = schwarzschild_phase2_trace_native(
+                    y0,
+                    m=cfg.m,
+                    dlambda=cfg.dlambda,
+                    max_steps=cfg.max_steps,
+                    r_escape=cfg.r_escape,
+                    r_horizon_epsilon=cfg.r_horizon_epsilon,
+                )
+                status = ray_status_from_native_phase2(nt)
+            else:
+                result = trace_null_geodesic_3d(
+                    x0,
+                    v0,
+                    m=cfg.m,
+                    dlambda=cfg.dlambda,
+                    max_steps=cfg.max_steps,
+                    r_escape=cfg.r_escape,
+                    r_horizon_epsilon=cfg.r_horizon_epsilon,
+                    store_samples=False,
+                )
+                status = result.status
+            if status == RayStatus.CAPTURED:
                 rgb[j, i, :] = 0.0
                 n_cap += 1
-            elif result.status == RayStatus.ESCAPED:
+            elif status == RayStatus.ESCAPED:
                 br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
                 rgb[j, i, 0] = br
                 rgb[j, i, 1] = bg
@@ -77,5 +99,6 @@ def render_schwarzschild_3d_image(
         "escaped": n_esc,
         "other": n_other,
         "frac_captured": n_cap / total,
+        "backend": "native" if use_native else "python",
     }
     return rgb, stats
