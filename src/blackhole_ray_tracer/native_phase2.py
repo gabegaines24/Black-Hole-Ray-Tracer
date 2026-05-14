@@ -6,6 +6,8 @@ from typing import Any
 
 import numpy as np
 
+from .phase1 import RayStatus
+
 try:
     from blackhole_ray_tracer._native_phase2 import schwarzschild_phase2_trace as _raw_trace
 except ImportError:  # pragma: no cover - extension missing on some installs
@@ -14,6 +16,22 @@ except ImportError:  # pragma: no cover - extension missing on some installs
 
 def native_phase2_available() -> bool:
     return _raw_trace is not None
+
+
+_NATIVE_STATUS_TO_RAY: dict[int, RayStatus] = {
+    0: RayStatus.CAPTURED,
+    1: RayStatus.ESCAPED,
+    2: RayStatus.MAX_STEPS,
+    3: RayStatus.NUMERICAL_ERROR,
+}
+
+
+def ray_status_from_native_phase2(result: dict[str, Any]) -> RayStatus:
+    """Map C `bh_rt_phase2_trace_result.status` to Python `RayStatus`."""
+    code = int(result["status"])
+    if code not in _NATIVE_STATUS_TO_RAY:
+        return RayStatus.NUMERICAL_ERROR
+    return _NATIVE_STATUS_TO_RAY[code]
 
 
 def schwarzschild_phase2_trace_native(

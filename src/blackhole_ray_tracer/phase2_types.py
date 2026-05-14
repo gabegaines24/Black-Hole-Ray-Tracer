@@ -26,6 +26,8 @@ class Phase2RenderConfig:
     r_horizon_epsilon: float = 1e-3
     # sky mapping for escaped rays (see phase2_render)
     sky_mode: str = "gradient"  # "gradient" | "flat"
+    # If True and `blackhole_ray_tracer._native_phase2` is installed, use C RK4 per pixel.
+    use_native_phase2: bool = False
 
 
 @dataclass(frozen=True, slots=True)
