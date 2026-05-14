@@ -74,7 +74,7 @@ uv run mypy src       # after dev group
 | `src/blackhole_ray_tracer/phase2_geodesic.py` | 3D null RK4 tracer |
 | `src/blackhole_ray_tracer/phase2_camera.py` | Static observer pinhole → initial null 4-velocity |
 | `src/blackhole_ray_tracer/phase2_types.py` | `Phase2RenderConfig`, camera, trace result types |
-| `src/blackhole_ray_tracer/phase2_render.py` | Per-pixel pinhole image loop |
+| `src/blackhole_ray_tracer/phase2_render.py` | Per-pixel pinhole image loop; optional **`use_native_phase2`** → `_native_phase2` |
 | `src/blackhole_ray_tracer/phase2_report.py` | Phase 2 presets + benchmark text |
 | `src/blackhole_ray_tracer/phase2_driver.py` | Phase 2 `--render` / `--report` CLI |
 | `kernel/include/bh_rt_rk4.h`, `kernel/src/bh_rt_rk4.c` | Shared C **RK4** step (no Python) |
