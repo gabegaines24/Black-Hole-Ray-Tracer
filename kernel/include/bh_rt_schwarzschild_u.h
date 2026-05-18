@@ -1,11 +1,6 @@
 #pragma once
 
-/* Align with docs/STATE_API.md (matches phase1 RayStatus semantics by name order). */
-
-#define BH_RT_STATUS_CAPTURED         0
-#define BH_RT_STATUS_ESCAPED          1
-#define BH_RT_STATUS_MAX_STEPS       2
-#define BH_RT_STATUS_NUMERICAL_ERROR 3
+#include "bh_rt_status.h"
 
 #ifdef __cplusplus
 extern "C" {
