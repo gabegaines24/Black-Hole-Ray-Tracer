@@ -20,6 +20,8 @@ kernel/harmonic_demo
 kernel/harmonic_demo.exe
 kernel/schwarzschild_demo
 kernel/schwarzschild_demo.exe
+kernel/schwarzschild3d_demo
+kernel/schwarzschild3d_demo.exe
 
 *.py[cod]
 *$py.class
