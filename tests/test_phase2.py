@@ -15,6 +15,7 @@ from blackhole_ray_tracer.phase2_camera import (
     initial_position_observer,
     static_observer_null_direction,
 )
+from blackhole_ray_tracer.phase2_batch import prepare_phase2_ray_batch, trace_phase2_ray_batch_python
 from blackhole_ray_tracer.phase2_christoffel import christoffel_schwarzschild, f_schwarzschild
 from blackhole_ray_tracer.phase2_geodesic import metric_invariant_schwarzschild, trace_null_geodesic_3d
 from blackhole_ray_tracer.phase2_render import render_schwarzschild_3d_image
@@ -66,6 +67,30 @@ def test_trace_geodesic_center_pixel_finishes() -> None:
     )
     assert res.status in set(RayStatus)
     assert res.steps_taken > 0
+
+
+def test_prepare_phase2_ray_batch_shapes_and_order() -> None:
+    cfg = Phase2RenderConfig(width=3, height=2)
+    batch = prepare_phase2_ray_batch(cfg)
+    assert batch.count == 6
+    assert batch.width == 3
+    assert batch.height == 2
+    assert batch.t0.shape == (6,)
+    assert batch.vphi0.shape == (6,)
+    assert np.all(batch.r0 == pytest.approx(cfg.r_observer))
+    assert batch.sx.tolist() == pytest.approx(
+        [-2.0 / 3.0, 0.0, 2.0 / 3.0, -2.0 / 3.0, 0.0, 2.0 / 3.0]
+    )
+    assert batch.sy.tolist() == pytest.approx([0.5, 0.5, 0.5, -0.5, -0.5, -0.5])
+
+
+def test_trace_phase2_ray_batch_python_reference() -> None:
+    cfg = Phase2RenderConfig(width=2, height=2, dlambda=0.12, max_steps=1500, r_escape=80.0)
+    batch = prepare_phase2_ray_batch(cfg)
+    results = trace_phase2_ray_batch_python(batch, cfg)
+    assert len(results) == 4
+    assert all(r.status in set(RayStatus) for r in results)
+    assert all(r.steps_taken > 0 for r in results)
 
 
 def test_render_tiny_image_smoke() -> None:
