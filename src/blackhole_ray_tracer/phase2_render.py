@@ -7,8 +7,7 @@ import math
 import numpy as np
 
 from .phase1 import RayStatus
-from .phase2_camera import make_camera_from_config, initial_position_observer, static_observer_null_direction
-from .phase2_geodesic import trace_null_geodesic_3d
+from .phase2_batch import prepare_phase2_ray_batch, trace_phase2_ray_batch_python
 from .phase2_types import Phase2RenderConfig
 
 
@@ -30,46 +29,27 @@ def render_schwarzschild_3d_image(
 ) -> tuple[np.ndarray, dict[str, float]]:
     """Return RGB float32 (H, W, 3) in [0,1] and simple stats dict."""
     h, w = cfg.height, cfg.width
-    cam = make_camera_from_config(
-        m=cfg.m,
-        r=cfg.r_observer,
-        theta=cfg.observer_theta,
-        phi=cfg.observer_phi,
-        fov_deg=cfg.fov_deg,
-        width=w,
-        height=h,
-    )
-    x0 = initial_position_observer(cam)
+    batch = prepare_phase2_ray_batch(cfg)
+    results = trace_phase2_ray_batch_python(batch, cfg)
     rgb = np.zeros((h, w, 3), dtype=np.float32)
     n_cap = n_esc = n_other = 0
 
-    for j in range(h):
-        for i in range(w):
-            sx = 2.0 * (i + 0.5) / w - 1.0
-            sy = 1.0 - 2.0 * (j + 0.5) / h
-            v0 = static_observer_null_direction(cam, sx, sy)
-            result = trace_null_geodesic_3d(
-                x0,
-                v0,
-                m=cfg.m,
-                dlambda=cfg.dlambda,
-                max_steps=cfg.max_steps,
-                r_escape=cfg.r_escape,
-                r_horizon_epsilon=cfg.r_horizon_epsilon,
-                store_samples=False,
-            )
-            if result.status == RayStatus.CAPTURED:
-                rgb[j, i, :] = 0.0
-                n_cap += 1
-            elif result.status == RayStatus.ESCAPED:
-                br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
-                rgb[j, i, 0] = br
-                rgb[j, i, 1] = bg
-                rgb[j, i, 2] = bb
-                n_esc += 1
-            else:
-                rgb[j, i, :] = (0.12, 0.1, 0.15)
-                n_other += 1
+    for idx, result in enumerate(results):
+        j, i = divmod(idx, w)
+        sx = float(batch.sx[idx])
+        sy = float(batch.sy[idx])
+        if result.status == RayStatus.CAPTURED:
+            rgb[j, i, :] = 0.0
+            n_cap += 1
+        elif result.status == RayStatus.ESCAPED:
+            br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
+            rgb[j, i, 0] = br
+            rgb[j, i, 1] = bg
+            rgb[j, i, 2] = bb
+            n_esc += 1
+        else:
+            rgb[j, i, :] = (0.12, 0.1, 0.15)
+            n_other += 1
 
     total = max(h * w, 1)
     stats = {
