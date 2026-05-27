@@ -11,8 +11,8 @@ Current contents:
 | `src/bh_rt_rk4.c` | Implementation (`workspace` = `5 × n` doubles) |
 | `include/bh_rt_schwarzschild_u.h` | Equatorial Schwarzschild null ray in \(u(\phi)=1/r\) (`bh_rt_schwarzschild_u_trace`) |
 | `src/bh_rt_schwarzschild_u.c` | Matches `phase1.trace_single_schwarzschild_ray` (RK4 order, ICS, thresholds) |
-| `include/bh_rt_schwarzschild_3d.h` | Scalar 3D Schwarzschild trace API matching Phase 2 state order |
-| `src/bh_rt_schwarzschild_3d.c` | Christoffel RHS + RK4 loop matching `phase2_geodesic.py` |
+| `include/bh_rt_schwarzschild_3d.h` | Scalar + SoA-batch 3D Schwarzschild trace API matching Phase 2 state order |
+| `src/bh_rt_schwarzschild_3d.c` | Christoffel RHS + RK4 loop matching `phase2_geodesic.py`; batch wrapper delegates to scalar parity path |
 | `src/demo_harmonic.c` | Phase A harmonic oscillator parity demo (CLI: `dt` `total_time` `omega`) |
 | `src/demo_schwarzschild_u.c` | Schwarzschild 2D one-line-result demo |
 | `src/demo_schwarzschild_3d.c` | Schwarzschild 3D one-line-result demo |
@@ -56,6 +56,5 @@ Pytest parity (optional compile): `tests/test_kernel_harmonic_parity.py`, `tests
 
 ## Next
 
-- Expand 3D Christoffel kernel into SoA batches after scalar parity remains stable.
-- SoA batched integration + deterministic termination flags (see [`docs/STATE_API.md`](../docs/STATE_API.md)).
+- Optimize 3D SoA batch internals after scalar-delegating parity remains stable.
 - `bridge/` pybind11 module calling the batch API.
