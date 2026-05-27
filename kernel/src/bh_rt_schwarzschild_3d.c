@@ -165,3 +165,46 @@ void bh_rt_schwarzschild_3d_trace(const double x0[4], const double v0[4],
   out->r_min = isfinite(r_min) ? r_min : NAN;
   memcpy(out->final_state, y, sizeof(out->final_state));
 }
+
+void bh_rt_schwarzschild_3d_trace_batch(
+    const bh_rt_schw3d_batch_input *in, double m, double dlambda,
+    int max_steps, double r_escape, double r_horizon_epsilon,
+    bh_rt_schw3d_batch_output *out) {
+  if (in == NULL || out == NULL || in->count <= 0)
+    return;
+
+  for (int i = 0; i < in->count; ++i) {
+    double x0[4] = {in->t0[i], in->r0[i], in->theta0[i], in->phi0[i]};
+    double v0[4] = {in->vt0[i], in->vr0[i], in->vtheta0[i], in->vphi0[i]};
+    bh_rt_schw3d_trace_result one;
+    bh_rt_schwarzschild_3d_trace(x0, v0, m, dlambda, max_steps, r_escape,
+                                 r_horizon_epsilon, &one);
+
+    if (out->status != NULL)
+      out->status[i] = one.status;
+    if (out->steps_taken != NULL)
+      out->steps_taken[i] = one.steps_taken;
+    if (out->termination_r != NULL)
+      out->termination_r[i] = one.termination_r;
+    if (out->termination_lambda != NULL)
+      out->termination_lambda[i] = one.termination_lambda;
+    if (out->r_min != NULL)
+      out->r_min[i] = one.r_min;
+    if (out->final_t != NULL)
+      out->final_t[i] = one.final_state[0];
+    if (out->final_r != NULL)
+      out->final_r[i] = one.final_state[1];
+    if (out->final_theta != NULL)
+      out->final_theta[i] = one.final_state[2];
+    if (out->final_phi != NULL)
+      out->final_phi[i] = one.final_state[3];
+    if (out->final_vt != NULL)
+      out->final_vt[i] = one.final_state[4];
+    if (out->final_vr != NULL)
+      out->final_vr[i] = one.final_state[5];
+    if (out->final_vtheta != NULL)
+      out->final_vtheta[i] = one.final_state[6];
+    if (out->final_vphi != NULL)
+      out->final_vphi[i] = one.final_state[7];
+  }
+}
