@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
-from ctypes import Structure, byref, c_double, c_int
+from ctypes import POINTER, Structure, byref, c_double, c_int
 from pathlib import Path
 
 import numpy as np
@@ -43,6 +43,38 @@ class Schw3DResult(Structure):
         ("termination_lambda", c_double),
         ("r_min", c_double),
         ("final_state", c_double * 8),
+    )
+
+
+class Schw3DBatchInput(Structure):
+    _fields_ = (
+        ("count", c_int),
+        ("t0", POINTER(c_double)),
+        ("r0", POINTER(c_double)),
+        ("theta0", POINTER(c_double)),
+        ("phi0", POINTER(c_double)),
+        ("vt0", POINTER(c_double)),
+        ("vr0", POINTER(c_double)),
+        ("vtheta0", POINTER(c_double)),
+        ("vphi0", POINTER(c_double)),
+    )
+
+
+class Schw3DBatchOutput(Structure):
+    _fields_ = (
+        ("status", POINTER(c_int)),
+        ("steps_taken", POINTER(c_int)),
+        ("termination_r", POINTER(c_double)),
+        ("termination_lambda", POINTER(c_double)),
+        ("r_min", POINTER(c_double)),
+        ("final_t", POINTER(c_double)),
+        ("final_r", POINTER(c_double)),
+        ("final_theta", POINTER(c_double)),
+        ("final_phi", POINTER(c_double)),
+        ("final_vt", POINTER(c_double)),
+        ("final_vr", POINTER(c_double)),
+        ("final_vtheta", POINTER(c_double)),
+        ("final_vphi", POINTER(c_double)),
     )
 
 
@@ -105,6 +137,33 @@ def schwarzschild_3d_trace_fn(tmp_path_factory: pytest.TempPathFactory):
         c_double,
         c_double,
         ctypes.POINTER(Schw3DResult),
+    ]
+    fn.restype = None
+    return fn
+
+
+@pytest.fixture(scope="module")
+def schwarzschild_3d_batch_fn(tmp_path_factory: pytest.TempPathFactory):
+    if os.environ.get("SKIP_KERNEL_TESTS", "").strip().lower() in ("1", "true", "yes"):
+        pytest.skip("SKIP_KERNEL_TESTS set")
+    if _compiler() is None:
+        pytest.skip("No C toolchain")
+    build_dir = tmp_path_factory.mktemp("schwarzschild_3d_batch_shlib")
+    lib_path = build_dir / ("libbh_rt_schwarzschild_3d_batch" + _shared_suffix())
+    if not _build_schwarzschild_3d_shlib(lib_path):
+        pytest.skip("Kernel Schwarzschild 3D compile failed")
+    assert lib_path.is_file()
+
+    lib = ctypes.CDLL(str(lib_path))
+    fn = lib.bh_rt_schwarzschild_3d_trace_batch
+    fn.argtypes = [
+        ctypes.POINTER(Schw3DBatchInput),
+        c_double,
+        c_double,
+        c_int,
+        c_double,
+        c_double,
+        ctypes.POINTER(Schw3DBatchOutput),
     ]
     fn.restype = None
     return fn
@@ -184,3 +243,121 @@ def test_schwarzschild_3d_trace_parity(
         py.termination_lambda, out.termination_lambda, abs_tol=1e-10
     )
     _assert_float_close_or_same_special(py.r_min, out.r_min, abs_tol=1e-8)
+
+
+def test_schwarzschild_3d_batch_parity(
+    schwarzschild_3d_batch_fn: Callable[..., None],
+) -> None:
+    m = 1.0
+    dlambda = 0.08
+    max_steps = 2500
+    r_escape = 80.0
+    eps = 1e-3
+    screen_points = [(0.0, 0.0), (0.35, 0.0), (0.0, 0.45), (0.6, 0.6)]
+    cam = make_camera_from_config(
+        m=m,
+        r=30.0,
+        theta=float(np.pi / 2),
+        phi=0.0,
+        fov_deg=60.0,
+        width=16,
+        height=16,
+    )
+
+    x0s = []
+    v0s = []
+    refs = []
+    for sx, sy in screen_points:
+        x0 = initial_position_observer(cam)
+        v0 = static_observer_null_direction(cam, sx, sy)
+        x0s.append(x0)
+        v0s.append(v0)
+        refs.append(
+            trace_null_geodesic_3d(
+                x0,
+                v0,
+                m=m,
+                dlambda=dlambda,
+                max_steps=max_steps,
+                r_escape=r_escape,
+                r_horizon_epsilon=eps,
+                store_samples=False,
+            )
+        )
+
+    n = len(screen_points)
+    t0 = (c_double * n)(*(float(x[0]) for x in x0s))
+    r0 = (c_double * n)(*(float(x[1]) for x in x0s))
+    theta0 = (c_double * n)(*(float(x[2]) for x in x0s))
+    phi0 = (c_double * n)(*(float(x[3]) for x in x0s))
+    vt0 = (c_double * n)(*(float(v[0]) for v in v0s))
+    vr0 = (c_double * n)(*(float(v[1]) for v in v0s))
+    vtheta0 = (c_double * n)(*(float(v[2]) for v in v0s))
+    vphi0 = (c_double * n)(*(float(v[3]) for v in v0s))
+
+    status = (c_int * n)()
+    steps_taken = (c_int * n)()
+    termination_r = (c_double * n)()
+    termination_lambda = (c_double * n)()
+    r_min = (c_double * n)()
+    final_t = (c_double * n)()
+    final_r = (c_double * n)()
+    final_theta = (c_double * n)()
+    final_phi = (c_double * n)()
+    final_vt = (c_double * n)()
+    final_vr = (c_double * n)()
+    final_vtheta = (c_double * n)()
+    final_vphi = (c_double * n)()
+
+    batch_in = Schw3DBatchInput(
+        n,
+        t0,
+        r0,
+        theta0,
+        phi0,
+        vt0,
+        vr0,
+        vtheta0,
+        vphi0,
+    )
+    batch_out = Schw3DBatchOutput(
+        status,
+        steps_taken,
+        termination_r,
+        termination_lambda,
+        r_min,
+        final_t,
+        final_r,
+        final_theta,
+        final_phi,
+        final_vt,
+        final_vr,
+        final_vtheta,
+        final_vphi,
+    )
+
+    schwarzschild_3d_batch_fn(
+        byref(batch_in),
+        m,
+        dlambda,
+        max_steps,
+        r_escape,
+        eps,
+        byref(batch_out),
+    )
+
+    for i, ref in enumerate(refs):
+        assert STATUS_FROM_PY[ref.status.value] == status[i]
+        assert ref.steps_taken == steps_taken[i]
+        _assert_float_close_or_same_special(
+            ref.termination_r,
+            termination_r[i],
+            abs_tol=1e-8,
+        )
+        _assert_float_close_or_same_special(
+            ref.termination_lambda,
+            termination_lambda[i],
+            abs_tol=1e-10,
+        )
+        _assert_float_close_or_same_special(ref.r_min, r_min[i], abs_tol=1e-8)
+        assert math.isfinite(final_r[i])
