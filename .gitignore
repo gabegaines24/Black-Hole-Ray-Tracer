@@ -11,6 +11,10 @@ plan.txt
 build/
 dist/
 
+# setuptools / editable install metadata (do not commit)
+*.egg-info/
+.eggs/
+
 # --- Ray tracer binary outputs ---
 *.ppm
 
@@ -29,6 +33,7 @@ kernel/schwarzschild3d_demo.exe
 venv/
 env/
 .env
+.pytest_cache/
 
 # --- Machine Learning Artifacts ---
 # Ignore large model weights and datasets

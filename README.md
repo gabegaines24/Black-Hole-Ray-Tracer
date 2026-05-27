@@ -45,16 +45,20 @@ uv run blackhole-ray-tracer --phase2-render --img-width 32 --img-height 32 --pha
 
 # Faster preset
 uv run blackhole-ray-tracer --phase2-render --phase2-preset fast --phase2-out shadow_fast.ppm
+
+# Same image using C per-ray (requires `_native_phase2`; Windows: BLACKHOLE_BUILD_NATIVE=1 + MSVC)
+uv run blackhole-ray-tracer --phase2-render --phase2-preset fast --phase2-native --phase2-out shadow_native.ppm
 ```
 
 Or use the dedicated module (requires `PYTHONPATH=src` if running from source without install):
 
 ```bash
 PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --render --preset balanced --out phase2.ppm
+PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --render --native --preset fast --out phase2_native.ppm
 PYTHONPATH=src uv run python -m blackhole_ray_tracer.phase2_driver --report
 ```
 
-**Note:** `kernel/` contains a standalone C **RK4** core plus a **harmonic** Phase A parity demo (`make -C kernel`); Schwarzschild geodesics are **not** in C yet. Phase 2 rendering still uses NumPy + `rk4_step` from Phase 1.
+**Note:** `kernel/` contains a standalone C **RK4** core, harmonic Phase A parity, equatorial Schwarzschild \(u(\phi)\), and **3D Schwarzschild null geodesics** verified by pytest against `phase2_geodesic` when a C toolchain is present. Phase **2 rendering** (`phase2_render.py`) uses Python orchestration with a SoA ray-batch preparation path; it can optionally call the installed `_native_phase2` extension per ray.
 
 Install optional groups as needed:
 
@@ -79,6 +83,8 @@ uv sync --group ml
 
 ## Development
 
+- **Git contributor email:** use **`gabegaines24@gmail.com`** (verified on GitHub for contribution graph credit). Repo-local: `git config user.email gabegaines24@gmail.com`.
+- **Native Phase 2 extension:** On **Linux/macOS**, `uv sync` builds **`blackhole_ray_tracer._native_phase2`** when compilers are installed. On **Windows**, compiling is **opt‑in**: install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), then `BLACKHOLE_BUILD_NATIVE=1 uv sync`. Otherwise the package installs without the extension; `tests/test_bridge_native_phase2.py` skips accordingly. Unix users can disable with `BLACKHOLE_SKIP_NATIVE=1 uv sync`.
 - Lint: `uv run --group dev ruff check .`
 - Type check: `uv run --group dev mypy src`
 - Tests: `uv run --group dev pytest`

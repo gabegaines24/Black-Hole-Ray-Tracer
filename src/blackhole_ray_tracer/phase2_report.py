@@ -109,7 +109,11 @@ def format_phase2_report() -> str:
 
 
 def render_config_from_preset(
-    name: str, m: float = 1.0, sky_mode: str = "gradient"
+    name: str,
+    m: float = 1.0,
+    sky_mode: str = "gradient",
+    *,
+    use_native_phase2: bool = False,
 ) -> Phase2RenderConfig:
     p = PRESETS[name]
     return Phase2RenderConfig(
@@ -124,4 +128,5 @@ def render_config_from_preset(
         max_steps=p["max_steps"],
         r_escape=p["r_escape"],
         sky_mode=sky_mode,
+        use_native_phase2=use_native_phase2,
     )

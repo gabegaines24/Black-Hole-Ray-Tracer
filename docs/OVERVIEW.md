@@ -17,13 +17,14 @@ Under `src/blackhole_ray_tracer/`:
 | **Phase 1** | `phase1.py`, `phase1_driver.py`, `phase1_image.py`, `phase1_tuning.py` | RK4 sanity (harmonic oscillator), equatorial Schwarzschild tracing in \(u(\phi)=1/r\), single ray logging, batch impact-parameter sweeps, simple **Einstein ring**–style PPM, tuning presets/report |
 | **Phase 2** | `phase2_*.py` | Spherical Schwarzschild **Christoffel + RK4** in affine parameter \((x^\mu,v^\mu)\); static observer **pinhole** camera; **3D shadow** PPM via per-pixel rays; presets/benchmark (`phase2_report.py`), driver CLI |
 | **Entry** | `main.py` (`blackhole-ray-tracer` console script), `phase1_driver`, `phase2_driver` module entrypoints | User-facing CLI |
-| **Tests** | `tests/test_phase1_extensions.py`, `tests/test_phase2.py` | Regression / smoke |
+| **Bridge (optional)** | `native_phase2.py`, extension `_native_phase2` from [`bridge/`](../bridge/README.md) | PyBind11 call into `bh_rt_schwarzschild_phase2_trace`; skip if wheel built without compilers |
+| **Tests** | `tests/test_phase1_extensions.py`, `tests/test_phase2.py`, kernel + bridge skips | Regression / smoke |
 
 Tooling: `pyproject.toml` — `uv` for env/lockfile; dependency group `dev` has `pytest`, `ruff`, `mypy`.
 
 ### Planned / scaffold only (verify before assuming implementation)
 
-Directories **`kernel/`**, **`bridge/`**, and **`ml/`** are described in the README as the long-term split (pure C integration, pybind11 bridge, ML surrogate pipeline). **`kernel/`** now hosts a generic **RK4** step, the Phase A **harmonic** demo, and a **Schwarzschild equatorial \(u(\phi)\)** tracer wired for pytest parity (`make -C kernel`). **`bridge/`** and **`ml/`** may still be **empty** until those milestones start. Do not assume a pybind extension exists until you see it under `bridge/`.
+Directories **`kernel/`**, **`bridge/`**, and **`ml/`** are described in the README as the long-term split (pure C integration, pybind11 bridge, ML surrogate pipeline). **`kernel/`** hosts the **RK4** core, Phase A harmonic + Schwarzschild \(u(\phi)\), and Schwarzschild **Phase 3D** Christoffel trace paths (see roadmap). **`bridge/`** now builds `blackhole_ray_tracer._native_phase2`, which wraps **`bh_rt_schwarzschild_phase2_trace`**. **`ml/`** is still scaffold-only until Phase 3.
 
 High-level layering:
 
@@ -31,7 +32,7 @@ High-level layering:
 flowchart TB
   cli["CLI — main, phase1_driver, phase2_driver"]
   pyproto["Python physics — phase1, phase2"]
-  bridge["bridge — pybind11 planned"]
+  bridge["bridge — pybind Phase2 starter"]
   kernel["kernel — C RK4 + demos started"]
   ml["ml — surrogate planned"]
 
@@ -73,10 +74,15 @@ uv run mypy src       # after dev group
 | `src/blackhole_ray_tracer/phase2_geodesic.py` | 3D null RK4 tracer |
 | `src/blackhole_ray_tracer/phase2_camera.py` | Static observer pinhole → initial null 4-velocity |
 | `src/blackhole_ray_tracer/phase2_types.py` | `Phase2RenderConfig`, camera, trace result types |
-| `src/blackhole_ray_tracer/phase2_render.py` | Per-pixel pinhole image loop |
+| `src/blackhole_ray_tracer/phase2_render.py` | Per-pixel pinhole image loop; optional **`use_native_phase2`** → `_native_phase2` |
 | `src/blackhole_ray_tracer/phase2_report.py` | Phase 2 presets + benchmark text |
 | `src/blackhole_ray_tracer/phase2_driver.py` | Phase 2 `--render` / `--report` CLI |
 | `kernel/include/bh_rt_rk4.h`, `kernel/src/bh_rt_rk4.c` | Shared C **RK4** step (no Python) |
 | `kernel/include/bh_rt_schwarzschild_u.h`, `kernel/src/bh_rt_schwarzschild_u.c` | Schwarzschild 2D \(u(\phi)=1/r\) ray trace (parity with `phase1.py`) |
+| `kernel/include/bh_rt_schwarzschild_phase2.h`, `kernel/src/bh_rt_schwarzschild_phase2.c` | Schwarzschild **3D** null tracer (Christoffel + RK4; parity with `phase2_geodesic.py`) |
+| `kernel/include/bh_rt_schwarzschild_3d.h`, `kernel/src/bh_rt_schwarzschild_3d.c` | Scalar + SoA-batch Schwarzschild **3D** trace API for the next bridge/batch path |
 | `kernel/src/demo_harmonic.c`, `kernel/src/demo_schwarzschild_u.c`, `kernel/Makefile` | RK4 + Schwarzschild CLI demos (`make -C kernel`) |
+| `bridge/module_phase2.cpp`, `MANIFEST.in`, `setup.py` | setuptools + PyBind11 extension `_native_phase2` embedding `bh_rt_*` sources |
+| `src/blackhole_ray_tracer/native_phase2.py` | Optional import façade + `native_phase2_available()` |
 | `kernel/README.md` | Kernel build and next steps |
+| `bridge/README.md` | Bridge directory rules and naming |

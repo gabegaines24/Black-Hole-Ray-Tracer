@@ -3,7 +3,7 @@ name = "blackhole-ray-tracer"
 version = "0.1.0"
 description = "Black hole ray tracer with C geodesic kernel and Python orchestration."
 readme = "README.md"
-authors = [{ name = "Gabe", email = "gabegaines1024@gmail.com" }]
+authors = [{ name = "gabegaines24", email = "gabegaines24@gmail.com" }]
 requires-python = ">=3.12"
 dependencies = ["numpy>=2.2.0", "rich>=14.0.0"]
 
@@ -16,5 +16,8 @@ viz = ["matplotlib>=3.10.0", "streamlit>=1.44.0"]
 ml = ["torch>=2.6.0", "scikit-learn>=1.6.0", "pandas>=2.2.0"]
 
 [build-system]
-requires = ["uv_build>=0.9.7,<0.10.0"]
-build-backend = "uv_build"
+requires = ["setuptools>=69", "wheel", "pybind11"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
