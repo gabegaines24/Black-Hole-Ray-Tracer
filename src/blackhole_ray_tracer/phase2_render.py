@@ -7,9 +7,18 @@ import math
 import numpy as np
 
 from .phase1 import RayStatus
-from .phase2_batch import prepare_phase2_ray_batch, trace_phase2_ray_batch_python
+from .phase2_batch import build_camera_y0
+from .phase2_camera import make_camera_from_config, initial_position_observer, static_observer_null_direction
+from .phase2_geodesic import trace_null_geodesic_3d
 from .phase2_types import Phase2RenderConfig
-from .native_phase2 import native_phase2_available, ray_status_from_native_phase2, schwarzschild_phase2_trace_native
+from .native_phase2 import (
+    batch_native_available,
+    native_phase2_available,
+    ray_status_array_from_native,
+    ray_status_from_native_phase2,
+    schwarzschild_phase2_batch_native,
+    schwarzschild_phase2_trace_native,
+)
 
 
 def _sky_rgb_from_direction(
@@ -28,13 +37,13 @@ def _sky_rgb_from_direction(
 def render_schwarzschild_3d_image(
     cfg: Phase2RenderConfig,
 ) -> tuple[np.ndarray, dict[str, float]]:
-    """Return RGB float32 (H, W, 3) in [0,1] and simple stats dict."""
-    h, w = cfg.height, cfg.width
-    batch = prepare_phase2_ray_batch(cfg)
-    rgb = np.zeros((h, w, 3), dtype=np.float32)
-    n_cap = n_esc = n_other = 0
+    """Return RGB float32 (H, W, 3) in [0,1] and simple stats dict.
 
-    use_native = cfg.use_native_phase2 and native_phase2_available()
+    When ``cfg.use_native_phase2`` is True the native C batch kernel is used
+    (one call for the entire pixel grid), replacing the Python ray-by-ray loop.
+    """
+    h, w = cfg.height, cfg.width
+
     if cfg.use_native_phase2 and not native_phase2_available():
         raise RuntimeError(
             "Phase2RenderConfig.use_native_phase2 is True but extension "
@@ -42,51 +51,102 @@ def render_schwarzschild_3d_image(
             "On Windows set BLACKHOLE_BUILD_NATIVE=1 and install MSVC Build Tools, then `uv sync`."
         )
 
-    results = None if use_native else trace_phase2_ray_batch_python(batch, cfg)
+    rgb = np.zeros((h, w, 3), dtype=np.float32)
+    n_cap = n_esc = n_other = 0
+    backend = "python"
 
-    for idx in range(batch.count):
-        j, i = divmod(idx, w)
-        sx = float(batch.sx[idx])
-        sy = float(batch.sy[idx])
+    use_batch = cfg.use_native_phase2 and batch_native_available()
+
+    if use_batch:
+        # ── native batch path ────────────────────────────────────────────────
+        backend = "native_batch"
+        y0 = build_camera_y0(cfg)   # (N, 8)
+        result = schwarzschild_phase2_batch_native(
+            y0,
+            m=cfg.m,
+            dlambda=cfg.dlambda,
+            max_steps=cfg.max_steps,
+            r_escape=cfg.r_escape,
+            r_horizon_epsilon=cfg.r_horizon_epsilon,
+        )
+        statuses = ray_status_array_from_native(result["status"])
+
+        for j in range(h):
+            for i in range(w):
+                idx = j * w + i
+                sx = 2.0 * (i + 0.5) / w - 1.0
+                sy = 1.0 - 2.0 * (j + 0.5) / h
+                status = statuses[idx]
+                if status == RayStatus.CAPTURED:
+                    rgb[j, i, :] = 0.0
+                    n_cap += 1
+                elif status == RayStatus.ESCAPED:
+                    br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
+                    rgb[j, i, 0] = br
+                    rgb[j, i, 1] = bg
+                    rgb[j, i, 2] = bb
+                    n_esc += 1
+                else:
+                    rgb[j, i, :] = (0.12, 0.1, 0.15)
+                    n_other += 1
+
+    else:
+        # ── Python (or single-ray native) fallback ───────────────────────────
+        use_native = cfg.use_native_phase2  # single-ray native, native_phase2 checked above
         if use_native:
-            y0 = np.array(
-                [
-                    batch.t0[idx],
-                    batch.r0[idx],
-                    batch.theta0[idx],
-                    batch.phi0[idx],
-                    batch.vt0[idx],
-                    batch.vr0[idx],
-                    batch.vtheta0[idx],
-                    batch.vphi0[idx],
-                ],
-                dtype=np.float64,
-            )
-            native_result = schwarzschild_phase2_trace_native(
-                y0,
-                m=cfg.m,
-                dlambda=cfg.dlambda,
-                max_steps=cfg.max_steps,
-                r_escape=cfg.r_escape,
-                r_horizon_epsilon=cfg.r_horizon_epsilon,
-            )
-            status = ray_status_from_native_phase2(native_result)
-        else:
-            assert results is not None
-            status = results[idx].status
+            backend = "native"
 
-        if status == RayStatus.CAPTURED:
-            rgb[j, i, :] = 0.0
-            n_cap += 1
-        elif status == RayStatus.ESCAPED:
-            br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
-            rgb[j, i, 0] = br
-            rgb[j, i, 1] = bg
-            rgb[j, i, 2] = bb
-            n_esc += 1
-        else:
-            rgb[j, i, :] = (0.12, 0.1, 0.15)
-            n_other += 1
+        cam = make_camera_from_config(
+            m=cfg.m,
+            r=cfg.r_observer,
+            theta=cfg.observer_theta,
+            phi=cfg.observer_phi,
+            fov_deg=cfg.fov_deg,
+            width=w,
+            height=h,
+        )
+        x0 = initial_position_observer(cam)
+
+        for j in range(h):
+            for i in range(w):
+                sx = 2.0 * (i + 0.5) / w - 1.0
+                sy = 1.0 - 2.0 * (j + 0.5) / h
+                v0 = static_observer_null_direction(cam, sx, sy)
+                if use_native:
+                    y0_ray = np.concatenate([x0, v0])
+                    nt = schwarzschild_phase2_trace_native(
+                        y0_ray,
+                        m=cfg.m,
+                        dlambda=cfg.dlambda,
+                        max_steps=cfg.max_steps,
+                        r_escape=cfg.r_escape,
+                        r_horizon_epsilon=cfg.r_horizon_epsilon,
+                    )
+                    status = ray_status_from_native_phase2(nt)
+                else:
+                    res = trace_null_geodesic_3d(
+                        x0, v0,
+                        m=cfg.m,
+                        dlambda=cfg.dlambda,
+                        max_steps=cfg.max_steps,
+                        r_escape=cfg.r_escape,
+                        r_horizon_epsilon=cfg.r_horizon_epsilon,
+                        store_samples=False,
+                    )
+                    status = res.status
+
+                if status == RayStatus.CAPTURED:
+                    rgb[j, i, :] = 0.0
+                    n_cap += 1
+                elif status == RayStatus.ESCAPED:
+                    br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
+                    rgb[j, i, 0] = br
+                    rgb[j, i, 1] = bg
+                    rgb[j, i, 2] = bb
+                    n_esc += 1
+                else:
+                    rgb[j, i, :] = (0.12, 0.1, 0.15)
+                    n_other += 1
 
     total = max(h * w, 1)
     stats = {
@@ -94,6 +154,6 @@ def render_schwarzschild_3d_image(
         "escaped": n_esc,
         "other": n_other,
         "frac_captured": n_cap / total,
-        "backend": "native" if use_native else "python",
+        "backend": backend,
     }
     return rgb, stats
