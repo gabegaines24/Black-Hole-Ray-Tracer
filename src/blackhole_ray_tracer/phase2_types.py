@@ -10,6 +10,17 @@ from .phase1 import RayStatus as RayStatus  # re-export for convenience
 
 
 @dataclass(frozen=True, slots=True)
+class DiskConfig:
+    """Thin equatorial accretion disk parameters (re-exported from phase2_disk for convenience)."""
+
+    r_inner: float = 6.0
+    r_outer: float = 20.0
+    inner_color: tuple[float, float, float] = (1.0, 0.6, 0.2)
+    outer_color: tuple[float, float, float] = (0.8, 0.3, 0.05)
+    redshift_scale: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
 class Phase2RenderConfig:
     """Parameters for a Schwarzschild 3D image render."""
 
@@ -28,6 +39,8 @@ class Phase2RenderConfig:
     sky_mode: str = "gradient"  # "gradient" | "flat"
     # If True and `blackhole_ray_tracer._native_phase2` is installed, use C RK4 per pixel.
     use_native_phase2: bool = False
+    # Optional thin accretion disk.  None = disabled.
+    disk: DiskConfig | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +69,7 @@ class GeodesicTraceResult:
     termination_lambda: float
     r_samples: list[float] = field(default_factory=list)
     t_samples: list[float] = field(default_factory=list)
+    theta_samples: list[float] = field(default_factory=list)
     r_min: float = float("nan")
 
     def as_numpy(self) -> dict[str, np.ndarray]:
