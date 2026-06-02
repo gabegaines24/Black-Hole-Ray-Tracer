@@ -1,8 +1,8 @@
-"""Phase 2 ray-batch helpers matching the C 3D kernel SoA contract.
+"""Phase 2 ray-batch helpers: SoA dataclass and (N,8) bridge-compatible builder.
 
-The C batch API consumes separate arrays for each coordinate/velocity component.
-These helpers keep Python render setup aligned with that layout before the
-pybind11 bridge exists.
+The SoA `Phase2RayBatch` / `prepare_phase2_ray_batch` path predates the PyBind11
+batch bridge and is kept for Python-only use.  `build_camera_y0` returns the
+row-major `(N, 8)` array consumed by the C batch kernel via the bridge.
 """
 
 from __future__ import annotations
@@ -11,10 +11,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .phase2_camera import initial_position_observer, make_camera_from_config, static_observer_null_direction
+from .phase2_camera import (
+    initial_position_observer,
+    make_camera_from_config,
+    static_observer_null_direction,
+)
 from .phase2_geodesic import trace_null_geodesic_3d
-from .phase2_types import GeodesicTraceResult, Phase2RenderConfig
+from .phase2_types import GeodesicTraceResult, Phase2RenderConfig, StaticObserverCamera
 
+
+# ── SoA dataclass (Python-only path) ─────────────────────────────────────────
 
 @dataclass(frozen=True, slots=True)
 class Phase2RayBatch:
@@ -80,18 +86,9 @@ def prepare_phase2_ray_batch(cfg: Phase2RenderConfig) -> Phase2RayBatch:
             vphi0[idx] = float(v0[3])
 
     return Phase2RayBatch(
-        width=w,
-        height=h,
-        sx=sx,
-        sy=sy,
-        t0=t0,
-        r0=r0,
-        theta0=theta0,
-        phi0=phi0,
-        vt0=vt0,
-        vr0=vr0,
-        vtheta0=vtheta0,
-        vphi0=vphi0,
+        width=w, height=h, sx=sx, sy=sy,
+        t0=t0, r0=r0, theta0=theta0, phi0=phi0,
+        vt0=vt0, vr0=vr0, vtheta0=vtheta0, vphi0=vphi0,
     )
 
 
@@ -99,31 +96,54 @@ def trace_phase2_ray_batch_python(
     batch: Phase2RayBatch,
     cfg: Phase2RenderConfig,
 ) -> list[GeodesicTraceResult]:
-    """Trace a prepared batch with the Python geodesic implementation.
-
-    This is a correctness-preserving fallback and a reference for the future
-    native bridge path.
-    """
+    """Trace a prepared batch with the Python geodesic implementation."""
     results: list[GeodesicTraceResult] = []
     for idx in range(batch.count):
         x0 = np.array(
-            [batch.t0[idx], batch.r0[idx], batch.theta0[idx], batch.phi0[idx]],
-            dtype=float,
+            [batch.t0[idx], batch.r0[idx], batch.theta0[idx], batch.phi0[idx]], dtype=float
         )
         v0 = np.array(
-            [batch.vt0[idx], batch.vr0[idx], batch.vtheta0[idx], batch.vphi0[idx]],
-            dtype=float,
+            [batch.vt0[idx], batch.vr0[idx], batch.vtheta0[idx], batch.vphi0[idx]], dtype=float
         )
         results.append(
             trace_null_geodesic_3d(
-                x0,
-                v0,
-                m=cfg.m,
-                dlambda=cfg.dlambda,
-                max_steps=cfg.max_steps,
-                r_escape=cfg.r_escape,
-                r_horizon_epsilon=cfg.r_horizon_epsilon,
+                x0, v0,
+                m=cfg.m, dlambda=cfg.dlambda, max_steps=cfg.max_steps,
+                r_escape=cfg.r_escape, r_horizon_epsilon=cfg.r_horizon_epsilon,
                 store_samples=False,
             )
         )
     return results
+
+
+# ── (N, 8) bridge-compatible builder ─────────────────────────────────────────
+
+def build_camera_y0(config: Phase2RenderConfig) -> np.ndarray:
+    """Return y0 array of shape (N, 8) for every pixel in the render grid.
+
+    Pixels are laid out row-major: row j, column i → flat index j*width + i.
+    Screen coords: sx ∈ [-1, 1] left→right, sy ∈ [-1, 1] bottom→top.
+    """
+    cam = StaticObserverCamera(
+        m=config.m,
+        r=config.r_observer,
+        theta=config.observer_theta,
+        phi=config.observer_phi,
+        fov_deg=config.fov_deg,
+        width=config.width,
+        height=config.height,
+    )
+    x0 = initial_position_observer(cam)
+    w, h = config.width, config.height
+    n = w * h
+    y0 = np.empty((n, 8), dtype=np.float64)
+    flat_idx = 0
+    for j in range(h):
+        for i in range(w):
+            sx = 2.0 * (i + 0.5) / w - 1.0
+            sy = 1.0 - 2.0 * (j + 0.5) / h
+            v0 = static_observer_null_direction(cam, sx, sy)
+            y0[flat_idx, :4] = x0
+            y0[flat_idx, 4:] = v0
+            flat_idx += 1
+    return y0
