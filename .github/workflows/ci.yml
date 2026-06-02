@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: "Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build native extension (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y build-essential
+          BLACKHOLE_BUILD_NATIVE=1 uv sync --extra dev
+        env:
+          BLACKHOLE_BUILD_NATIVE: "1"
+
+      - name: Install (without native extension)
+        if: runner.os != 'Linux'
+        run: uv sync --extra dev
+
+      - name: Run tests
+        run: uv run pytest -q --tb=short
+        env:
+          BLACKHOLE_BUILD_NATIVE: "1"
+
+  kernel:
+    name: "Kernel C parity (ubuntu-latest)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build kernel demos
+        run: make -C kernel all
+
+      - name: Smoke test phase2_batch_demo
+        run: |
+          ./kernel/phase2_batch_demo | grep -q "BH_PHASE2_BATCH_RESULT"
