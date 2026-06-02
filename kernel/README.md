@@ -1,70 +1,78 @@
 # C kernel (`kernel/`)
 
-Pure C primitives for eventual high-throughput tracing. **No Python headers** here.
+Pure C primitives for high-throughput tracing. **No Python headers** here.
 
-Current contents:
+## File map
 
 | Path | Purpose |
 |------|---------|
-| `include/bh_rt_rk4.h` | Explicit **RK4** step API (function-pointer RHS) |
-| `include/bh_rt_status.h` | Shared status codes matching Python `RayStatus` |
-| `src/bh_rt_rk4.c` | Implementation (`workspace` = `5 × n` doubles) |
-| `include/bh_rt_schwarzschild_u.h` | Equatorial Schwarzschild null ray in \(u(\phi)=1/r\) (`bh_rt_schwarzschild_u_trace`) |
-| `src/bh_rt_schwarzschild_u.c` | Matches `phase1.trace_single_schwarzschild_ray` (RK4 order, ICS, thresholds) |
-| `include/bh_rt_schwarzschild_phase2.h` | Phase 2 **3D** null-geodesic state \(t,r,\theta,\phi,v^\mu\) + trace result |
-| `src/bh_rt_schwarzschild_phase2.c` | Mirrors `phase2_geodesic.trace_null_geodesic_3d` with `store_samples=False` semantics |
-| `include/bh_rt_schwarzschild_3d.h` | Scalar + SoA-batch 3D Schwarzschild trace API matching Phase 2 state order |
-| `src/bh_rt_schwarzschild_3d.c` | Christoffel RHS + RK4 loop matching `phase2_geodesic.py`; batch wrapper delegates to scalar parity path |
-| `src/demo_harmonic.c` | Phase A harmonic oscillator parity demo (CLI: `dt` `total_time` `omega`) |
-| `src/demo_schwarzschild_u.c` | Schwarzschild 2D one-line-result demo |
-| `src/demo_schwarzschild_3d.c` | Schwarzschild 3D one-line-result demo |
+| `include/bh_rt_rk4.h` | Generic **RK4** step (function-pointer RHS) |
+| `src/bh_rt_rk4.c` | RK4 implementation (`workspace` = `5 × n` doubles) |
+| `include/bh_rt_schwarzschild_u.h` | Equatorial 2D Schwarzschild trace in u(φ) |
+| `src/bh_rt_schwarzschild_u.c` | Mirrors `phase1.trace_single_schwarzschild_ray` |
+| `include/bh_rt_status.h` | Canonical `BH_RT_STATUS_*` int constants (0–3) |
+| `include/bh_rt_schwarzschild_phase2.h` | Phase 2 single-ray API + result struct |
+| `src/bh_rt_schwarzschild_phase2.c` | 3D Schwarzschild trace; exposes shared helpers |
+| `include/bh_rt_schwarzschild_phase2_internal.h` | Shared Christoffel / renormalize helpers |
+| `include/bh_rt_schwarzschild_phase2_batch.h` | N-ray SoA batch API contract |
+| `src/bh_rt_schwarzschild_phase2_batch.c` | CPU batch implementation |
+| `cuda/bh_rt_schwarzschild_phase2_batch.cu` | CUDA port of the batch kernel |
+| `src/demo_harmonic.c` | Harmonic oscillator RK4 smoke demo |
+| `src/demo_schwarzschild_u.c` | 2D Schwarzschild one-result demo |
+| `src/demo_schwarzschild_phase2_batch.c` | Phase 2 batch smoke demo (4 rays) |
 
-## Build (`make -C kernel`)
-
-From repository root:
-
-```bash
-make -C kernel
-```
-
-Builds **`harmonic_demo`**, **`schwarzschild_demo`**, and **`schwarzschild3d_demo`** (when `make` resolves to the default target `all`).
+## Build (CPU)
 
 ```bash
-./kernel/harmonic_demo 0.02 8 1
-./kernel/schwarzschild_demo 1 6 0.2 8 0.002 - 80
-./kernel/schwarzschild3d_demo 1 0.1 3000 80
+make -C kernel          # builds all: harmonic_demo, schwarzschild_demo, phase2_batch_demo
+make -C kernel clean
 ```
 
-For `schwarzschild_demo`, the 6th argument is optional `r_capture`; use `-` for Phase‑1 default `2·m + 1e-3`.
-
-Or compile manually:
+### Batch demo smoke test
 
 ```bash
-cc -std=c99 -Wall -Wextra -O2 -I kernel/include \
-  kernel/src/bh_rt_rk4.c kernel/src/demo_harmonic.c -o kernel/harmonic_demo -lm
-
-cc -std=c99 -Wall -Wextra -O2 -I kernel/include \
-  kernel/src/bh_rt_rk4.c kernel/src/bh_rt_schwarzschild_u.c kernel/src/demo_schwarzschild_u.c \
-  -o kernel/schwarzschild_demo -lm
-
-cc -std=c99 -Wall -Wextra -O2 -I kernel/include \
-  kernel/src/bh_rt_rk4.c kernel/src/bh_rt_schwarzschild_3d.c kernel/src/demo_schwarzschild_3d.c \
-  -o kernel/schwarzschild3d_demo -lm
+./kernel/phase2_batch_demo
+# Expected prefix: BH_PHASE2_BATCH_RESULT ...
 ```
 
-On success, `demo_harmonic.c` prints a line prefixed with `BH_RK4_RESULT`; `demo_schwarzschild_u.c` prints `BH_SCHW_U_RESULT …`; `demo_schwarzschild_3d.c` prints `BH_SCHW3D_RESULT …`.
-
-Compile shared library for ctypes parity manually (POSIX example):
+### Shared library for ctypes parity tests (POSIX)
 
 ```bash
-cc -std=c99 -Wall -Wextra -O2 -fPIC -shared -I kernel/include \
-  kernel/src/bh_rt_rk4.c kernel/src/bh_rt_schwarzschild_phase2.c \
-  -o /tmp/libbh_rt_schwarzschild_phase2.so -lm
+cc -std=c99 -Wall -O2 -fPIC -shared -I kernel/include \
+  kernel/src/bh_rt_rk4.c \
+  kernel/src/bh_rt_schwarzschild_phase2.c \
+  kernel/src/bh_rt_schwarzschild_phase2_batch.c \
+  -o /tmp/libbh_rt_phase2_batch.so -lm
 ```
 
-Pytest parity (optional compile): `tests/test_kernel_harmonic_parity.py`, `tests/test_kernel_schwarzschild_u_parity.py`, `tests/test_kernel_phase2_parity.py`, `tests/test_kernel_schwarzschild_3d_parity.py` (skipped if no C toolchain or `SKIP_KERNEL_TESTS=1`).
+## Build (CUDA — Phase 4)
 
-## Next
+Requires CUDA 11+ and a GPU with compute capability ≥ 7.5 (GTX 1650 Super = sm_75).
 
-- Optimize 3D SoA batch internals after scalar-delegating parity remains stable.
-- `bridge/` pybind11 module calling the batch API.
+```bash
+nvcc -O2 -arch=sm_75 -I kernel/include \
+     --compiler-options -fPIC -shared \
+     -o build/libbh_rt_phase2_cuda.so \
+     kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu
+```
+
+Then set the env variable so the Python wrapper can find it:
+
+```bash
+export BLACKHOLE_CUDA_LIB=build/libbh_rt_phase2_cuda.so
+uv run python -c "from blackhole_ray_tracer.native_phase2_cuda import cuda_batch_available; print(cuda_batch_available())"
+```
+
+The CUDA kernel uses the same `(N×8)` input layout and the same four output arrays as the CPU batch
+kernel — see `docs/STATE_API.md`.
+
+## Tests
+
+| Test file | What it checks |
+|-----------|---------------|
+| `tests/test_kernel_harmonic_parity.py` | RK4 vs analytic harmonic oscillator |
+| `tests/test_kernel_schwarzschild_u_parity.py` | C 2D tracer vs Python |
+| `tests/test_kernel_phase2_parity.py` | C single-ray 3D vs Python |
+| `tests/test_kernel_phase2_batch_parity.py` | C N-ray batch vs N Python calls |
+
+All kernel tests skip automatically if no C compiler is present (`cc`/`gcc`/`clang`).
