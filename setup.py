@@ -67,6 +67,7 @@ if should_build_native():
                 src("bridge", "module_phase2.cpp"),
                 src("kernel", "src", "bh_rt_rk4.c"),
                 src("kernel", "src", "bh_rt_schwarzschild_phase2.c"),
+                src("kernel", "src", "bh_rt_schwarzschild_phase2_batch.c"),
             ],
             include_dirs=[
                 src("kernel", "include"),
