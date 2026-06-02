@@ -17,6 +17,7 @@ from .phase1_tuning import PRESETS, format_step_f_report
 from .phase2_render import render_schwarzschild_3d_image
 from .phase2_report import format_phase2_report, render_config_from_preset
 from .phase2_types import Phase2RenderConfig
+from .native_phase2 import batch_native_available
 
 
 def main() -> None:
@@ -88,9 +89,41 @@ def main() -> None:
         action="store_true",
         help="With --phase2-render: trace each ray via C extension (_native_phase2); requires build.",
     )
+    parser.add_argument(
+        "--phase2-out",
+        type=str,
+        default="phase2_render.ppm",
+        help="Output path for --phase2-render (PPM RGB)",
+    )
+    parser.add_argument(
+        "--phase2-preview",
+        action="store_true",
+        help="Phase 2: open a live matplotlib preview window (uses native batch when available).",
+    )
+    parser.add_argument(
+        "--preview-fps", type=float, default=2.0,
+        help="Target FPS for --phase2-preview.",
+    )
+    parser.add_argument(
+        "--preview-frames", type=int, default=None,
+        help="Stop after N frames in --phase2-preview (for benchmarks/testing).",
+    )
     args = parser.parse_args()
 
     console = Console()
+    if args.phase2_preview:
+        from .preview import run_preview, _build_config  # local import to avoid matplotlib at startup
+        use_native = not getattr(args, "no_native", False)
+        if use_native and not batch_native_available():
+            console.print(
+                "[yellow]Native extension not available — using Python integrator.[/yellow]"
+            )
+            use_native = False
+        preview_cfg = _build_config(
+            args.phase2_preset, args.img_width, args.img_height, use_native
+        )
+        run_preview(preview_cfg, target_fps=args.preview_fps, max_frames=args.preview_frames)
+        return
     if args.phase2_report:
         console.print(format_phase2_report())
         return
