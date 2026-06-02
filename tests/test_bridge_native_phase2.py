@@ -7,7 +7,13 @@ import math
 import numpy as np
 import pytest
 
-from blackhole_ray_tracer.native_phase2 import native_phase2_available, schwarzschild_phase2_trace_native
+from blackhole_ray_tracer.native_phase2 import (
+    batch_native_available,
+    native_phase2_available,
+    ray_status_array_from_native,
+    schwarzschild_phase2_batch_native,
+    schwarzschild_phase2_trace_native,
+)
 from blackhole_ray_tracer.phase1 import RayStatus
 from blackhole_ray_tracer.phase2_camera import (
     make_camera_from_config,
@@ -53,3 +59,45 @@ def test_native_phase2_parity_optional() -> None:
         assert math.isnan(float(nt["r_min"]))
     else:
         assert math.isclose(float(nt["r_min"]), py.r_min, rel_tol=0.0, abs_tol=1e-9)
+
+
+def test_native_phase2_batch_parity_4x4() -> None:
+    """Batch bridge produces same results as per-ray Python traces on a 4×4 grid."""
+    if not batch_native_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase2 not installed")
+
+    m, dlambda, max_steps, r_escape = 1.0, 0.1, 3000, 80.0
+    cam = make_camera_from_config(m, r=30.0, theta=np.pi / 2, phi=0.0,
+                                  fov_deg=60.0, width=4, height=4)
+    x0 = initial_position_observer(cam)
+    w, h = 4, 4
+    y0_list = []
+    for j in range(h):
+        for i in range(w):
+            sx = 2.0 * (i + 0.5) / w - 1.0
+            sy = 1.0 - 2.0 * (j + 0.5) / h
+            v0 = static_observer_null_direction(cam, sx, sy)
+            y0_list.append(np.concatenate([x0, v0]))
+    y0_batch = np.stack(y0_list, axis=0)
+
+    batch_result = schwarzschild_phase2_batch_native(y0_batch, m, dlambda, max_steps, r_escape)
+    c_statuses = ray_status_array_from_native(batch_result["status"])
+
+    STATUS_NATIVE = {
+        0: RayStatus.CAPTURED,
+        1: RayStatus.ESCAPED,
+        2: RayStatus.MAX_STEPS,
+        3: RayStatus.NUMERICAL_ERROR,
+    }
+
+    for idx, y0_row in enumerate(y0_list):
+        py = trace_null_geodesic_3d(
+            y0_row[:4], y0_row[4:],
+            m=m, dlambda=dlambda, max_steps=max_steps, r_escape=r_escape,
+            store_samples=False,
+        )
+        assert c_statuses[idx] == py.status, f"ray {idx}: status mismatch"
+        assert int(batch_result["steps_taken"][idx]) == py.steps_taken, f"ray {idx}: steps mismatch"
+        c_tr = float(batch_result["termination_r"][idx])
+        assert math.isclose(c_tr, py.termination_r, rel_tol=0.0, abs_tol=1e-9), \
+            f"ray {idx}: termination_r {c_tr} != {py.termination_r}"
