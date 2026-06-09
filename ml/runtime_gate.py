@@ -133,12 +133,6 @@ class RuntimeGate:
         r_horizon_epsilon: float,
     ) -> SurrogateResult:
         """Fall back to the Python RK4 integrator."""
-        import sys
-        from pathlib import Path
-        _root = Path(__file__).resolve().parents[1]
-        if str(_root / "src") not in sys.path:
-            sys.path.insert(0, str(_root / "src"))
-
         from blackhole_ray_tracer.phase1 import RayStatus
         from blackhole_ray_tracer.phase2_geodesic import trace_null_geodesic_3d
 

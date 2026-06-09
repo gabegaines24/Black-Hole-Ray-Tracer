@@ -10,7 +10,6 @@ from .phase1 import RayStatus
 from .phase2_batch import build_camera_y0
 from .phase2_camera import make_camera_from_config, initial_position_observer, static_observer_null_direction
 from .phase2_disk import (
-    DiskConfig,
     detect_equatorial_crossing,
     disk_color_at_r,
     disk_hit_from_equatorial_crossing,

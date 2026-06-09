@@ -16,8 +16,6 @@ from __future__ import annotations
 import argparse
 import time
 
-import numpy as np
-
 from .native_phase2 import batch_native_available
 from .phase2_render import render_schwarzschild_3d_image
 from .phase2_report import render_config_from_preset, PRESETS

@@ -83,13 +83,6 @@ def test_native_phase2_batch_parity_4x4() -> None:
     batch_result = schwarzschild_phase2_batch_native(y0_batch, m, dlambda, max_steps, r_escape)
     c_statuses = ray_status_array_from_native(batch_result["status"])
 
-    STATUS_NATIVE = {
-        0: RayStatus.CAPTURED,
-        1: RayStatus.ESCAPED,
-        2: RayStatus.MAX_STEPS,
-        3: RayStatus.NUMERICAL_ERROR,
-    }
-
     for idx, y0_row in enumerate(y0_list):
         py = trace_null_geodesic_3d(
             y0_row[:4], y0_row[4:],

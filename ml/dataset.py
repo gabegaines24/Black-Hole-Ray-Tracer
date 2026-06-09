@@ -19,22 +19,9 @@ from pathlib import Path
 
 import numpy as np
 
-# Add project src to path if running as a script from the ml/ directory
-import sys
-_root = Path(__file__).resolve().parents[1]
-if str(_root / "src") not in sys.path:
-    sys.path.insert(0, str(_root / "src"))
-
 from blackhole_ray_tracer.phase1 import RayStatus
-from blackhole_ray_tracer.phase2_camera import (
-    make_camera_from_config,
-    initial_position_observer,
-    static_observer_null_direction,
-)
 from blackhole_ray_tracer.phase2_geodesic import trace_null_geodesic_3d
 from ml.schema import (
-    INPUT_COLUMNS,
-    OUTPUT_COLUMNS,
     STATUS_CAPTURED,
     STATUS_ESCAPED,
     STATUS_MAX_STEPS,
