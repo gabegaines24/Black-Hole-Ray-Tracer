@@ -22,7 +22,7 @@ from blackhole_ray_tracer.phase2_christoffel import christoffel_schwarzschild, f
 from blackhole_ray_tracer.phase2_geodesic import metric_invariant_schwarzschild, trace_null_geodesic_3d
 from blackhole_ray_tracer.phase2_render import render_schwarzschild_3d_image
 from blackhole_ray_tracer.phase2_report import format_phase2_report, render_config_from_preset
-from blackhole_ray_tracer.phase2_types import Phase2RenderConfig
+from blackhole_ray_tracer.phase2_types import DiskConfig, Phase2RenderConfig
 
 
 def test_f_schwarzschild_horizon() -> None:
@@ -105,6 +105,21 @@ def test_render_tiny_image_smoke() -> None:
     assert stats.get("backend") == "python"
     if stats["captured"] > 0:
         assert float(np.min(rgb)) < 0.1
+
+
+def test_render_tiny_image_with_disk_smoke() -> None:
+    cfg = Phase2RenderConfig(
+        width=4,
+        height=4,
+        dlambda=0.12,
+        max_steps=1500,
+        r_escape=80.0,
+        disk=DiskConfig(),
+    )
+    rgb, stats = render_schwarzschild_3d_image(cfg)
+    assert rgb.shape == (4, 4, 3)
+    assert stats["captured"] + stats["escaped"] + stats["other"] == 16
+    assert stats.get("backend") == "python"
 
 
 def test_ppm_round_trip_tmp() -> None:
