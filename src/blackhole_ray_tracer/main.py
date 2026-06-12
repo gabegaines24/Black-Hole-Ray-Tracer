@@ -16,7 +16,7 @@ from .phase1_image import render_einstein_ring_image, write_ppm_rgb
 from .phase1_tuning import PRESETS, format_step_f_report
 from .phase2_render import render_schwarzschild_3d_image
 from .phase2_report import format_phase2_report, render_config_from_preset
-from .phase2_types import Phase2RenderConfig
+from .phase2_types import DiskConfig, Phase2RenderConfig
 from .native_phase2 import batch_native_available
 
 
@@ -90,10 +90,9 @@ def main() -> None:
         help="With --phase2-render: trace each ray via C extension (_native_phase2); requires build.",
     )
     parser.add_argument(
-        "--phase2-out",
-        type=str,
-        default="phase2_render.ppm",
-        help="Output path for --phase2-render (PPM RGB)",
+        "--phase2-disk",
+        action="store_true",
+        help="With --phase2-render: enable the thin equatorial accretion disk overlay.",
     )
     parser.add_argument(
         "--phase2-preview",
@@ -135,6 +134,23 @@ def main() -> None:
                 sky_mode="gradient",
                 use_native_phase2=args.phase2_native,
             )
+            if args.phase2_disk:
+                cfg = Phase2RenderConfig(
+                    width=cfg.width,
+                    height=cfg.height,
+                    m=cfg.m,
+                    r_observer=cfg.r_observer,
+                    observer_theta=cfg.observer_theta,
+                    observer_phi=cfg.observer_phi,
+                    fov_deg=cfg.fov_deg,
+                    dlambda=cfg.dlambda,
+                    max_steps=cfg.max_steps,
+                    r_escape=cfg.r_escape,
+                    r_horizon_epsilon=cfg.r_horizon_epsilon,
+                    sky_mode=cfg.sky_mode,
+                    use_native_phase2=cfg.use_native_phase2,
+                    disk=DiskConfig(),
+                )
         else:
             cfg = Phase2RenderConfig(
                 width=args.img_width,
@@ -143,6 +159,7 @@ def main() -> None:
                 dlambda=0.06,
                 max_steps=8000,
                 use_native_phase2=args.phase2_native,
+                disk=DiskConfig() if args.phase2_disk else None,
             )
         rgb, stats = render_schwarzschild_3d_image(cfg)
         write_ppm_rgb(args.phase2_out, rgb)
