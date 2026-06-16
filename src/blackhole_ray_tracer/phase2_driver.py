@@ -9,6 +9,7 @@ Run with:
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 
 from .phase1_image import write_ppm_rgb
 from .phase2_render import render_schwarzschild_3d_image
@@ -64,6 +65,12 @@ def main() -> None:
         action="store_true",
         help="Enable the thin equatorial accretion disk overlay (Python render path).",
     )
+    parser.add_argument(
+        "--ml-gate",
+        type=str,
+        default=None,
+        help="Use Phase 3 ML RuntimeGate with this surrogate .npz path; missing model falls back to RK4.",
+    )
     args = parser.parse_args()
 
     if args.report:
@@ -79,22 +86,9 @@ def main() -> None:
             args.preset, m=args.m, sky_mode=args.sky, use_native_phase2=args.native
         )
         if args.disk:
-            cfg = Phase2RenderConfig(
-                width=cfg.width,
-                height=cfg.height,
-                m=cfg.m,
-                r_observer=cfg.r_observer,
-                observer_theta=cfg.observer_theta,
-                observer_phi=cfg.observer_phi,
-                fov_deg=cfg.fov_deg,
-                dlambda=cfg.dlambda,
-                max_steps=cfg.max_steps,
-                r_escape=cfg.r_escape,
-                r_horizon_epsilon=cfg.r_horizon_epsilon,
-                sky_mode=cfg.sky_mode,
-                use_native_phase2=cfg.use_native_phase2,
-                disk=DiskConfig(),
-            )
+            cfg = replace(cfg, disk=DiskConfig())
+        if args.ml_gate is not None:
+            cfg = replace(cfg, ml_gate_model_path=args.ml_gate)
     else:
         cfg = Phase2RenderConfig(
             width=args.width,
@@ -108,6 +102,7 @@ def main() -> None:
             sky_mode=args.sky,
             use_native_phase2=args.native,
             disk=DiskConfig() if args.disk else None,
+            ml_gate_model_path=args.ml_gate,
         )
     rgb, stats = render_schwarzschild_3d_image(cfg)
     write_ppm_rgb(args.out, rgb)
@@ -117,6 +112,8 @@ def main() -> None:
         print(f"- preset: {args.preset}")
     if args.disk:
         print("- disk: enabled")
+    if args.ml_gate:
+        print(f"- ml gate: {args.ml_gate} (surrogate_frac={stats['surrogate_frac']:.3f})")
     print(
         f"- per-ray: dlambda={cfg.dlambda}, max_steps={cfg.max_steps}, r_escape={cfg.r_escape}, "
         f"r_obs={cfg.r_observer}, fov={cfg.fov_deg}°"

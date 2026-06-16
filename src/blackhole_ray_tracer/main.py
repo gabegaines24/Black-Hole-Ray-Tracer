@@ -1,6 +1,8 @@
 """CLI entrypoint for bootstrap and Phase 1 experiments."""
 
 import argparse
+from dataclasses import replace
+
 from rich.console import Console
 
 import numpy as np
@@ -95,6 +97,12 @@ def main() -> None:
         help="With --phase2-render: enable the thin equatorial accretion disk overlay.",
     )
     parser.add_argument(
+        "--phase2-ml-gate",
+        type=str,
+        default=None,
+        help="With --phase2-render: use ML RuntimeGate model path; missing model falls back to RK4.",
+    )
+    parser.add_argument(
         "--phase2-preview",
         action="store_true",
         help="Phase 2: open a live matplotlib preview window (uses native batch when available).",
@@ -135,22 +143,9 @@ def main() -> None:
                 use_native_phase2=args.phase2_native,
             )
             if args.phase2_disk:
-                cfg = Phase2RenderConfig(
-                    width=cfg.width,
-                    height=cfg.height,
-                    m=cfg.m,
-                    r_observer=cfg.r_observer,
-                    observer_theta=cfg.observer_theta,
-                    observer_phi=cfg.observer_phi,
-                    fov_deg=cfg.fov_deg,
-                    dlambda=cfg.dlambda,
-                    max_steps=cfg.max_steps,
-                    r_escape=cfg.r_escape,
-                    r_horizon_epsilon=cfg.r_horizon_epsilon,
-                    sky_mode=cfg.sky_mode,
-                    use_native_phase2=cfg.use_native_phase2,
-                    disk=DiskConfig(),
-                )
+                cfg = replace(cfg, disk=DiskConfig())
+            if args.phase2_ml_gate is not None:
+                cfg = replace(cfg, ml_gate_model_path=args.phase2_ml_gate)
         else:
             cfg = Phase2RenderConfig(
                 width=args.img_width,
@@ -160,6 +155,7 @@ def main() -> None:
                 max_steps=8000,
                 use_native_phase2=args.phase2_native,
                 disk=DiskConfig() if args.phase2_disk else None,
+                ml_gate_model_path=args.phase2_ml_gate,
             )
         rgb, stats = render_schwarzschild_3d_image(cfg)
         write_ppm_rgb(args.phase2_out, rgb)

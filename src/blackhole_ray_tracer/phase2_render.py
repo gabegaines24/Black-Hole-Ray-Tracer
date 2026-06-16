@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from ml.schema import STATUS_CAPTURED, STATUS_ESCAPED, STATUS_MAX_STEPS, STATUS_NUMERIC
 
 from .phase1 import RayStatus
 from .phase2_batch import build_camera_y0
@@ -24,6 +25,18 @@ from .native_phase2 import (
     schwarzschild_phase2_batch_native,
     schwarzschild_phase2_trace_native,
 )
+
+
+def _ray_status_from_ml_gate(status: int) -> RayStatus:
+    if status == STATUS_CAPTURED:
+        return RayStatus.CAPTURED
+    if status == STATUS_ESCAPED:
+        return RayStatus.ESCAPED
+    if status == STATUS_MAX_STEPS:
+        return RayStatus.MAX_STEPS
+    if status == STATUS_NUMERIC:
+        return RayStatus.NUMERICAL_ERROR
+    return RayStatus.MAX_STEPS
 
 
 def _sky_rgb_from_direction(
@@ -58,9 +71,13 @@ def render_schwarzschild_3d_image(
 
     rgb = np.zeros((h, w, 3), dtype=np.float32)
     n_cap = n_esc = n_other = 0
+    n_surrogate = 0
     backend = "python"
 
     use_batch = cfg.use_native_phase2 and batch_native_available()
+    use_ml_gate = cfg.ml_gate_model_path is not None
+    if use_ml_gate and cfg.use_native_phase2:
+        raise ValueError("ML gate and native Phase 2 backend cannot be enabled together.")
 
     if use_batch:
         # ── native batch path ────────────────────────────────────────────────
@@ -100,6 +117,12 @@ def render_schwarzschild_3d_image(
         use_native = cfg.use_native_phase2  # single-ray native, native_phase2 checked above
         if use_native:
             backend = "native"
+        ml_gate = None
+        if use_ml_gate:
+            from ml.runtime_gate import RuntimeGate
+
+            ml_gate = RuntimeGate.from_model_path(str(cfg.ml_gate_model_path))
+            backend = "ml_gate" if ml_gate.surrogate_loaded else "ml_gate_fallback"
 
         cam = make_camera_from_config(
             m=cfg.m,
@@ -120,7 +143,22 @@ def render_schwarzschild_3d_image(
                 sx = 2.0 * (i + 0.5) / w - 1.0
                 sy = 1.0 - 2.0 * (j + 0.5) / h
                 v0 = static_observer_null_direction(cam, sx, sy)
-                if use_native:
+                if ml_gate is not None:
+                    y0_ray = np.concatenate([x0, v0])
+                    gate_result = ml_gate.infer_or_integrate(
+                        y0_ray,
+                        m=cfg.m,
+                        dlambda=cfg.dlambda,
+                        max_steps=cfg.max_steps,
+                        r_escape=cfg.r_escape,
+                        r_horizon_epsilon=cfg.r_horizon_epsilon,
+                    )
+                    status = _ray_status_from_ml_gate(gate_result.status)
+                    if gate_result.from_surrogate:
+                        n_surrogate += 1
+                    samples_theta = []
+                    samples_r = []
+                elif use_native:
                     y0_ray = np.concatenate([x0, v0])
                     nt = schwarzschild_phase2_trace_native(
                         y0_ray,
@@ -188,5 +226,6 @@ def render_schwarzschild_3d_image(
         "other": n_other,
         "frac_captured": n_cap / total,
         "backend": backend,
+        "surrogate_frac": n_surrogate / total,
     }
     return rgb, stats

@@ -41,6 +41,8 @@ class Phase2RenderConfig:
     use_native_phase2: bool = False
     # Optional thin accretion disk.  None = disabled.
     disk: DiskConfig | None = None
+    # Optional Phase 3 ML surrogate gate model path. Missing path falls back to RK4.
+    ml_gate_model_path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

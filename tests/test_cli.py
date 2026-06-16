@@ -23,3 +23,4 @@ def test_main_help_has_single_phase2_out_and_disk_flag(
     ]
     assert len(phase2_out_rows) == 1
     assert "--phase2-disk" in out
+    assert "--phase2-ml-gate" in out

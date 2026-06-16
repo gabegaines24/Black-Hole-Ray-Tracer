@@ -122,6 +122,22 @@ def test_render_tiny_image_with_disk_smoke() -> None:
     assert stats.get("backend") == "python"
 
 
+def test_render_tiny_image_with_ml_gate_fallback(tmp_path: Path) -> None:
+    cfg = Phase2RenderConfig(
+        width=2,
+        height=2,
+        dlambda=0.12,
+        max_steps=1000,
+        r_escape=80.0,
+        ml_gate_model_path=str(tmp_path / "missing-surrogate.npz"),
+    )
+    rgb, stats = render_schwarzschild_3d_image(cfg)
+    assert rgb.shape == (2, 2, 3)
+    assert stats["captured"] + stats["escaped"] + stats["other"] == 4
+    assert stats["backend"] == "ml_gate_fallback"
+    assert stats["surrogate_frac"] == 0.0
+
+
 def test_ppm_round_trip_tmp() -> None:
     cfg = Phase2RenderConfig(width=4, height=4, dlambda=0.12, max_steps=1500)
     rgb, _ = render_schwarzschild_3d_image(cfg)
