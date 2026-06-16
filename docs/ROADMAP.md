@@ -51,7 +51,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 **Known gaps**
 
 - Phase 2 render loop is still **Python-orchestrated** (per-pixel); optional **C per-ray** path when `use_native_phase2` + `_native_phase2` is installed (see `phase2_render`, `--phase2-native`).
-- No anti-aliasing, no accretion disk texture, no Kerr.
+- No anti-aliasing or accretion disk texture.
 
 **Acceptance (maintain)**
 
@@ -80,17 +80,34 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 ---
 
-### Phase 3 — ML warm starter — planned
+### Phase 3 — Kerr / Boyer-Lindquist prototype (Python) — started
+
+| Item | Status | Modules |
+|------|--------|---------|
+| Kerr metric + Christoffel symbols | Done | `phase3_christoffel.py` |
+| Kerr null RK4 trace loop | Done | `phase3_geodesic.py` |
+| Pinhole render config + image loop | Done | `phase3_types.py`, `phase3_render.py` |
+| Presets/report + direct CLI | Done | `phase3_report.py`, `phase3_driver.py` |
+
+**Acceptance (maintain)**
+
+- `tests/test_phase3.py` passes: `spin=0` parity vs Phase 2 Schwarzschild, equatorial Kerr `E`/`L` conservation, tiny render/report smoke.
+- Kerr remains Python-first; do not port to C until the prototype has stronger validation coverage.
+
+---
+
+### Phase 3+ — ML warm starter — in progress
 
 | Item | Goal |
 |------|------|
 | **`ml/`** | Generate training tuples from verified integrator outputs |
 | Surrogate | Model predicts outcomes or endpoint state under budget |
-| Policy | Optionally switch kernel ↔ surrogate with safety checks |
+| Policy | Switch render rays through `RuntimeGate` with RK4 fallback |
 
 **Acceptance**
 
-- Documented dataset format + minimal training script; tests optional but preferred.
+- Documented dataset format + minimal training script.
+- `--phase2-ml-gate` / `phase2_driver --ml-gate` render without requiring a trained model by falling back to RK4.
 
 ---
 
@@ -119,7 +136,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | `--phase1-step-e` | Step E PPM (`--ppm-out`, `--img-width`, `--img-height`, `--preset`) |
 | `--phase1-step-f` | Step F report |
 | `--phase2-report` | Phase 2 presets + benchmark |
-| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags; `--phase2-native` for C per-ray) |
+| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags; `--phase2-native` for C per-ray, `--phase2-disk`, `--phase2-ml-gate`) |
 
 ### `python -m blackhole_ray_tracer.phase1_driver`
 
@@ -134,6 +151,14 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | `--report` | Presets + `dlambda` benchmark |
 | `--render` | 3D PPM (`--out`, `--preset` or `--width`/`--height`/`--dlambda`/…) |
 | `--native` | Use C extension per ray when `_native_phase2` is installed |
+| `--disk`, `--ml-gate` | Enable disk overlay, or route rays through the ML runtime gate |
+
+### `python -m blackhole_ray_tracer.phase3_driver`
+
+| Flag | Purpose |
+|------|---------|
+| `--report` | Kerr presets + single-ray benchmark |
+| `--render` | Kerr PPM (`--out`, `--preset`, `--spin`, `--disk`, or explicit render parameters) |
 
 Installation: typically `PYTHONPATH=src` when developing from checkout without reinstall.
 
@@ -163,6 +188,8 @@ Installation: typically `PYTHONPATH=src` when developing from checkout without r
 - [x] Interactive preview CLI (`preview.py`, `--phase2-preview`).
 - [x] Accretion disk intersection + Keplerian Doppler redshift (`phase2_disk.py`).
 - [x] Kerr / Boyer–Lindquist design doc (`docs/KERR_BOYER_LINDQUIST.md`).
+- [x] Kerr Python prototype: Christoffel symbols, RK4 geodesic trace, render config/driver, and `tests/test_phase3.py` (`phase3_*`).
 - [x] ML surrogate scaffold: schema, dataset generator, MLP (pure NumPy), runtime gate (`ml/`).
+- [x] Phase 2 ML render gate wiring (`Phase2RenderConfig.ml_gate_model_path`, `--phase2-ml-gate`, `phase2_driver --ml-gate`) with RK4 fallback.
 - [x] CUDA batch kernel (`kernel/cuda/`) + Python ctypes bridge (`native_phase2_cuda.py`).
 - [x] **Ignore `*.ppm` in `.gitignore`** — render outputs are binary and bloat history; keep them untracked (policy; see repo `.gitignore`).
