@@ -90,6 +90,7 @@ def schwarzschild_phase2_batch_native(
         steps_taken     (N,) int32
         termination_r   (N,) float64
         r_min           (N,) float64
+        eq_r_cross      (N,) float64 — first equatorial crossing r, NaN if none
     """
     if _raw_batch_trace is None:
         raise RuntimeError(
