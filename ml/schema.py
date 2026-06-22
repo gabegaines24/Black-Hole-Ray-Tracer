@@ -39,6 +39,22 @@ from __future__ import annotations
 
 import numpy as np
 
+__all__ = [
+    "R_REF",
+    "V_REF",
+    "SURROGATE_R_THRESHOLD",
+    "N_INPUTS",
+    "N_OUTPUTS",
+    "INPUT_COLUMNS",
+    "OUTPUT_COLUMNS",
+    "STATUS_CAPTURED",
+    "STATUS_ESCAPED",
+    "STATUS_MAX_STEPS",
+    "STATUS_NUMERIC",
+    "normalize_inputs",
+    "denormalize_outputs",
+]
+
 # Normalisation constants
 R_REF: float = 30.0       # M units — typical observer distance
 V_REF: float = 1.0        # geometric units
