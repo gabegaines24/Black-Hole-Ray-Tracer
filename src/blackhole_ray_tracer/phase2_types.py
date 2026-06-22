@@ -41,6 +41,8 @@ class Phase2RenderConfig:
     use_native_phase2: bool = False
     # Optional thin accretion disk.  None = disabled.
     disk: DiskConfig | None = None
+    # Super-sample factor: render at (W*s, H*s) then box-average to (W, H). 1 = disabled.
+    supersample: int = 1
 
 
 @dataclass(frozen=True, slots=True)
