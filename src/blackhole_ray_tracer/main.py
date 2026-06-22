@@ -79,6 +79,12 @@ def main() -> None:
         help="Phase 2: use fast/balanced/quality (overrides phase2 size and integration; use with --phase2-render)",
     )
     parser.add_argument(
+        "--phase2-out",
+        type=str,
+        default="phase2_schwarzschild_3d.ppm",
+        help="Output PPM for --phase2-render",
+    )
+    parser.add_argument(
         "--phase2-native",
         action="store_true",
         help="With --phase2-render: trace each ray via C extension (_native_phase2); requires build.",
