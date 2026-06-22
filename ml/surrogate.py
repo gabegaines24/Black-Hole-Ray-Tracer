@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+
+__all__ = ["MLPWeights", "init_random_weights", "train", "predict_batch"]
 from typing import NamedTuple
 
 import numpy as np
