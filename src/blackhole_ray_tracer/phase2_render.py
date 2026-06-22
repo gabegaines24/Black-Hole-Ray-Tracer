@@ -46,7 +46,19 @@ def render_schwarzschild_3d_image(
 
     When ``cfg.use_native_phase2`` is True the native C batch kernel is used
     (one call for the entire pixel grid), replacing the Python ray-by-ray loop.
+
+    When ``cfg.supersample > 1`` renders at ``(W*s, H*s)`` then box-averages
+    down to ``(W, H)`` for anti-aliasing.
     """
+    s = max(getattr(cfg, "supersample", 1), 1)
+    if s > 1:
+        import dataclasses
+        hi_cfg = dataclasses.replace(cfg, width=cfg.width * s, height=cfg.height * s, supersample=1)
+        rgb_full, stats = render_schwarzschild_3d_image(hi_cfg)
+        rgb = rgb_full.reshape(cfg.height, s, cfg.width, s, 3).mean(axis=(1, 3)).astype(np.float32)
+        stats["supersample"] = s
+        return rgb, stats
+
     h, w = cfg.height, cfg.width
 
     if cfg.use_native_phase2 and not native_phase2_available():
@@ -75,25 +87,51 @@ def render_schwarzschild_3d_image(
             r_horizon_epsilon=cfg.r_horizon_epsilon,
         )
         statuses = ray_status_array_from_native(result["status"])
+        eq_r_cross_arr: np.ndarray | None = result.get("eq_r_cross")
 
+        disk = cfg.disk
         for j in range(h):
             for i in range(w):
                 idx = j * w + i
                 sx = 2.0 * (i + 0.5) / w - 1.0
                 sy = 1.0 - 2.0 * (j + 0.5) / h
                 status = statuses[idx]
-                if status == RayStatus.CAPTURED:
-                    rgb[j, i, :] = 0.0
-                    n_cap += 1
-                elif status == RayStatus.ESCAPED:
-                    br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
-                    rgb[j, i, 0] = br
-                    rgb[j, i, 1] = bg
-                    rgb[j, i, 2] = bb
-                    n_esc += 1
-                else:
-                    rgb[j, i, :] = (0.12, 0.1, 0.15)
-                    n_other += 1
+
+                disk_drawn = False
+                if (
+                    disk is not None
+                    and status != RayStatus.CAPTURED
+                    and eq_r_cross_arr is not None
+                ):
+                    r_cross = float(eq_r_cross_arr[idx])
+                    if math.isfinite(r_cross):
+                        y0_ray = y0[idx]
+                        dh = disk_hit_from_equatorial_crossing(
+                            r_cross, disk, cfg.m,
+                            vt=float(y0_ray[4]),
+                            vph=float(y0_ray[7]),
+                        )
+                        if dh.hit:
+                            dr, dg, db = disk_color_at_r(r_cross, dh.z_factor, disk)
+                            rgb[j, i, 0] = dr
+                            rgb[j, i, 1] = dg
+                            rgb[j, i, 2] = db
+                            n_esc += 1
+                            disk_drawn = True
+
+                if not disk_drawn:
+                    if status == RayStatus.CAPTURED:
+                        rgb[j, i, :] = 0.0
+                        n_cap += 1
+                    elif status == RayStatus.ESCAPED:
+                        br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
+                        rgb[j, i, 0] = br
+                        rgb[j, i, 1] = bg
+                        rgb[j, i, 2] = bb
+                        n_esc += 1
+                    else:
+                        rgb[j, i, :] = (0.12, 0.1, 0.15)
+                        n_other += 1
 
     else:
         # ── Python (or single-ray native) fallback ───────────────────────────
