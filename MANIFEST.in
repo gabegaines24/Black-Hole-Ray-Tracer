@@ -1,3 +1,6 @@
 recursive-include bridge *.cpp
 recursive-include kernel/include *.h
 recursive-include kernel/src *.c
+recursive-include kernel/cuda *.cu *.h Makefile
+recursive-include ml *.py
+include build/.gitkeep
