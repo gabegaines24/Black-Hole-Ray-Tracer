@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 
+__all__ = ["trace_null_geodesic_3d"]
+
 import numpy as np
 
 from .phase1 import RayStatus, rk4_step

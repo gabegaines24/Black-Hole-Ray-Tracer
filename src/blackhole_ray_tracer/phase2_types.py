@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+__all__ = ["Phase2RenderConfig", "GeodesicTraceResult", "DiskConfig"]
+
 import numpy as np
 
 from .phase1 import RayStatus as RayStatus  # re-export for convenience

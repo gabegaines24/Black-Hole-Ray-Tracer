@@ -36,6 +36,14 @@ import math
 from dataclasses import dataclass
 from typing import NamedTuple
 
+__all__ = [
+    "DiskConfig",
+    "DiskHitResult",
+    "detect_equatorial_crossing",
+    "disk_hit_from_equatorial_crossing",
+    "disk_color_at_r",
+]
+
 
 @dataclass(frozen=True, slots=True)
 class DiskConfig:
