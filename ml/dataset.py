@@ -106,7 +106,12 @@ def generate_dataset(
             print(f"  generated {len(X_rows)} / {n_rays} rays …")
 
     X = np.array(X_rows, dtype=np.float32)
-    Y = np.array(Y_rows, dtype=np.float32)
+    # Build Y in float64 first, clamp all columns to float32-safe range, then downcast.
+    _F32_MAX = np.float64(np.finfo(np.float32).max)
+    Y_raw = np.array(Y_rows, dtype=np.float64)
+    Y_raw = np.clip(Y_raw, -_F32_MAX, _F32_MAX)
+    with np.errstate(over="ignore"):
+        Y = Y_raw.astype(np.float32)
     return X, Y
 
 
