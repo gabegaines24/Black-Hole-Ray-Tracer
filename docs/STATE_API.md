@@ -63,12 +63,17 @@ y0[i*8 + 7] = v^phi
 
 ### Output arrays (all length N, caller-allocated)
 
-| Array name           | C type     | NumPy dtype | Meaning |
-|----------------------|------------|-------------|---------|
+| Array name             | C type     | NumPy dtype | Meaning |
+|------------------------|------------|-------------|---------|
 | `out_status[i]`        | `int`      | `int32`     | `BH_RT_STATUS_*` code |
 | `out_steps_taken[i]`   | `int`      | `int32`     | Steps consumed |
 | `out_termination_r[i]` | `double`   | `float64`   | r at termination |
 | `out_r_min[i]`         | `double`   | `float64`   | Min r reached (NaN if none) |
+| `out_eq_r_cross[i]`    | `double`   | `float64`   | r at first equatorial plane crossing (θ=π/2), NaN if none |
+
+The `eq_r_cross` output enables disk coloring in the batch render path without storing full
+per-ray trajectories. A sign change in `θ − π/2` between consecutive steps signals a crossing;
+the r value at the post-crossing step is stored.
 
 ### Shared scalars
 
@@ -82,6 +87,7 @@ out_status: np.ndarray        # shape (N,), dtype int32
 out_steps_taken: np.ndarray   # shape (N,), dtype int32
 out_termination_r: np.ndarray # shape (N,), dtype float64
 out_r_min: np.ndarray         # shape (N,), dtype float64
+out_eq_r_cross: np.ndarray    # shape (N,), dtype float64  — NaN when no crossing
 ```
 
 ---
