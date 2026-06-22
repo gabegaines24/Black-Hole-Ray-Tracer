@@ -80,30 +80,39 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 ---
 
-### Phase 3 — ML warm starter — planned
+### Phase 3 — Kerr physics + visual fidelity + ML — substantially complete
 
-| Item | Goal |
-|------|------|
-| **`ml/`** | Generate training tuples from verified integrator outputs |
-| Surrogate | Model predicts outcomes or endpoint state under budget |
-| Policy | Optionally switch kernel ↔ surrogate with safety checks |
+| Item | Status | Modules |
+|------|--------|---------|
+| Kerr Christoffel (BL coords) + ODE RHS | Done | `phase3_christoffel.py` |
+| Kerr null geodesic integrator (Python RK4) | Done | `phase3_geodesic.py` |
+| `KerrRenderConfig` + dispatcher | Done | `phase3_types.py`, `phase3_render.py` |
+| Kerr parity / E/L conservation tests | Done | `tests/test_phase3_kerr.py` |
+| Disk detection in native batch path (`eq_r_cross`) | Done | `kernel/.../batch.c`, `bridge/`, `phase2_render.py` |
+| Anti-aliasing (supersample + box-average) | Done | `phase2_types.py` supersample field, `phase2_render.py`, `--aa` flag |
+| ML scaffold (schema, dataset, surrogate, gate) | Done | `ml/` |
+| ML end-to-end tests | Done | `tests/test_ml.py` |
 
 **Acceptance**
 
-- Documented dataset format + minimal training script; tests optional but preferred.
+- `uv run pytest` passes Phase 3 + ML tests.
+- `a=0` Kerr traces agree qualitatively with Phase 2 Schwarzschild.
+- E/L conservation drift < 1% over 20 λ-steps away from the horizon.
 
 ---
 
-### Phase 4 — GPU port — planned
+### Phase 4 — GPU port — partially scaffolded
 
-| Item | Goal |
-|------|------|
-| CUDA (or METAL/other) batch geodesics | Preview-oriented throughput |
-| Shared API with CPU kernel | Same inputs/outputs as bridge |
+| Item | Goal | Status |
+|------|------|--------|
+| CUDA batch kernel | Preview-oriented throughput | `.cu` exists; build path via `kernel/cuda/Makefile` |
+| Python ctypes bridge | Load `libbh_rt_phase2_cuda.so` at runtime | `native_phase2_cuda.py` |
+| `setup.py` `nvcc` target | Pip-installable GPU path | Planned |
 
 **Acceptance**
 
-- Target metric documented (e.g. rays/s or FPS at fixed resolution TBD).
+- `make -C kernel/cuda cuda_batch ARCH=sm_75` produces `build/libbh_rt_phase2_cuda.so` (requires CUDA toolkit).
+- Optional CI step (`CUDA_AVAILABLE=1` repo variable) validates the build.
 
 ---
 
@@ -147,7 +156,7 @@ Installation: typically `PYTHONPATH=src` when developing from checkout without r
 | New 3D prototype before kernel | `phase2_*` modules + small driver changes |
 | Shared integrator primitive | Keep `rk4_step` in `phase1.py` until kernel duplicates it deliberately |
 | C performance | New files under **`kernel/`** + **`bridge/`**; doc API in this file |
-| Kerr / BL coordinates | Future `phase3_*` or `kerr_*` naming TBD |
+| Kerr / BL coordinates | `phase3_christoffel.py`, `phase3_geodesic.py`, `phase3_render.py` |
 
 ---
 
@@ -166,3 +175,8 @@ Installation: typically `PYTHONPATH=src` when developing from checkout without r
 - [x] ML surrogate scaffold: schema, dataset generator, MLP (pure NumPy), runtime gate (`ml/`).
 - [x] CUDA batch kernel (`kernel/cuda/`) + Python ctypes bridge (`native_phase2_cuda.py`).
 - [x] **Ignore `*.ppm` in `.gitignore`** — render outputs are binary and bloat history; keep them untracked (policy; see repo `.gitignore`).
+- [x] Kerr Boyer–Lindquist geodesic integrator (`phase3_christoffel.py`, `phase3_geodesic.py`) + render dispatcher + parity / conservation tests.
+- [x] Equatorial crossing output in C batch kernel (`out_eq_r_cross`) → disk detection in native batch path.
+- [x] Anti-aliasing supersample (`Phase2RenderConfig.supersample`, `--aa` CLI flag).
+- [x] ML end-to-end tests (`tests/test_ml.py`): schema, dataset shapes, surrogate forward, gate routing.
+- [x] CUDA standalone build path (`kernel/cuda/Makefile`, `build/.gitkeep`, optional CI step).
