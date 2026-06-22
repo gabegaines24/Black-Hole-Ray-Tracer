@@ -32,7 +32,8 @@ extern "C" {
  * out_status        : int[N]         — per-ray termination status (BH_RT_STATUS_*)
  * out_steps_taken   : int[N]         — steps consumed by each ray
  * out_termination_r : double[N]      — r coordinate at termination
- * out_r_min         : double[N]      — minimum r reached (NAN if never tracked) */
+ * out_r_min         : double[N]      — minimum r reached (NAN if never tracked)
+ * out_eq_r_cross    : double[N]      — r at first equatorial (theta=pi/2) crossing, NAN if none */
 void bh_rt_schwarzschild_phase2_batch_trace(
     const double *y0,
     int n,
@@ -44,7 +45,8 @@ void bh_rt_schwarzschild_phase2_batch_trace(
     int    *out_status,
     int    *out_steps_taken,
     double *out_termination_r,
-    double *out_r_min);
+    double *out_r_min,
+    double *out_eq_r_cross);
 
 #ifdef __cplusplus
 }

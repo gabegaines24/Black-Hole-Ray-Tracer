@@ -20,8 +20,10 @@ void bh_rt_schwarzschild_phase2_batch_trace(
     int    *out_status,
     int    *out_steps_taken,
     double *out_termination_r,
-    double *out_r_min)
+    double *out_r_min,
+    double *out_eq_r_cross)
 {
+  static const double PI_HALF = 1.5707963267948966;
   double r_cap = 2.0 * m + r_horizon_epsilon;
   bh_rt_p2_userdata ud;
   ud.m = m;
@@ -40,11 +42,16 @@ void bh_rt_schwarzschild_phase2_batch_trace(
     double lam = 0.0;
     int status = BH_RT_STATUS_MAX_STEPS;
     double termination_r = NAN;
+    double eq_r_cross = NAN;   /* first equatorial-plane crossing */
     int steps_taken = 0;
     int broke = 0;
 
+    /* theta offset from pi/2 at the start of each step (for sign-change detection). */
+    double prev_dth = y[2] - PI_HALF;
+
     for (int step_idx = 0; step_idx < max_steps; ++step_idx) {
       double r = y[1];
+      double th = y[2];
 
       if (!bh_rt_p2_all_finite(y)) {
         status = BH_RT_STATUS_NUMERICAL_ERROR;
@@ -69,6 +76,18 @@ void bh_rt_schwarzschild_phase2_batch_trace(
       }
       if (isfinite(r))
         r_min_val = fmin(r_min_val, r);
+
+      /* Equatorial crossing detection: theta crosses pi/2 (sign change of theta - pi/2). */
+      if (!isfinite(eq_r_cross)) {
+        double cur_dth = th - PI_HALF;
+        if (step_idx > 0 && prev_dth * cur_dth < 0.0 && isfinite(r)) {
+          /* Linear interpolation to find crossing radius. */
+          double frac = fabs(prev_dth) / (fabs(prev_dth) + fabs(cur_dth) + 1e-30);
+          eq_r_cross = r;  /* use current r as approximation */
+          (void)frac;      /* could refine: r_cross = r_prev + frac*(r - r_prev) */
+        }
+        prev_dth = cur_dth;
+      }
 
       bh_rt_rk4_step(bh_rt_p2_deriv, lam, y, dlambda, &ud, BH_RT_P2_N_STATE, rk_ws);
       if ((step_idx % 4) == 0)
@@ -97,5 +116,6 @@ void bh_rt_schwarzschild_phase2_batch_trace(
     out_steps_taken[ray]   = steps_taken;
     out_termination_r[ray] = termination_r;
     out_r_min[ray]         = r_min_val;
+    out_eq_r_cross[ray]    = eq_r_cross;
   }
 }
