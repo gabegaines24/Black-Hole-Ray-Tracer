@@ -8,8 +8,12 @@ plan.txt
 *.dll
 *.dylib
 *.exe
-build/
 dist/
+# build/ directory — track .gitkeep but ignore compiled artefacts
+build/*.so
+build/*.dll
+build/*.dylib
+build/*.exe
 
 # setuptools / editable install metadata (do not commit)
 *.egg-info/

@@ -59,3 +59,27 @@ jobs:
       - name: Smoke test phase2_batch_demo
         run: |
           ./kernel/phase2_batch_demo | grep -q "BH_PHASE2_BATCH_RESULT"
+
+  cuda-build:
+    # Optional job — only runs when the `CUDA_AVAILABLE` repository variable is set to '1'.
+    # To enable: Settings → Variables → New repository variable → CUDA_AVAILABLE = 1
+    name: "CUDA kernel build (optional)"
+    runs-on: ubuntu-latest
+    if: vars.CUDA_AVAILABLE == '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA toolkit
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q nvidia-cuda-toolkit
+
+      - name: Build CUDA batch library
+        run: |
+          mkdir -p build
+          make -C kernel/cuda cuda_batch ARCH=sm_75
+
+      - name: Verify shared library exists
+        run: |
+          test -f build/libbh_rt_phase2_cuda.so && echo "CUDA library built OK"
