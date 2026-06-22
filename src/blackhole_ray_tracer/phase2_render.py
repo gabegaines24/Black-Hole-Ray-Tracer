@@ -226,5 +226,6 @@ def render_schwarzschild_3d_image(
         "other": n_other,
         "frac_captured": n_cap / total,
         "backend": backend,
+        "supersample": max(getattr(cfg, "supersample", 1), 1),
     }
     return rgb, stats
