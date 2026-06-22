@@ -124,5 +124,6 @@ def render_kerr_3d_image(
         "frac_captured": n_cap / (total * s * s),
         "backend": "kerr_python",
         "spin": cfg.a,
+        "supersample": s,
     }
     return rgb, stats
