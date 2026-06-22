@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+__all__ = ["KerrRenderConfig"]
+
 from .phase2_types import DiskConfig, Phase2RenderConfig
 
 

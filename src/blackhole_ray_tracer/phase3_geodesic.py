@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 
+__all__ = ["trace_kerr_null_geodesic"]
+
 import numpy as np
 
 from .phase1 import RayStatus, rk4_step

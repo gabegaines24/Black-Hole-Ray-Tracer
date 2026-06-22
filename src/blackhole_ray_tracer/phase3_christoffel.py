@@ -13,6 +13,16 @@ from __future__ import annotations
 
 import math
 
+__all__ = [
+    "kerr_sigma",
+    "kerr_delta",
+    "geodesic_acceleration_kerr",
+    "kerr_null_geodesic_rhs",
+    "kerr_conserved",
+    "kerr_null_invariant",
+    "renormalize_vr_kerr",
+]
+
 import numpy as np
 
 I_T, I_R, I_TH, I_PH = 0, 1, 2, 3
