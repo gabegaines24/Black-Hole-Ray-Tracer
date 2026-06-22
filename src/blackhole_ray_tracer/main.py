@@ -107,6 +107,14 @@ def main() -> None:
         "--preview-frames", type=int, default=None,
         help="Stop after N frames in --phase2-preview (for benchmarks/testing).",
     )
+    parser.add_argument(
+        "--aa", "--supersample",
+        dest="supersample",
+        type=int,
+        default=1,
+        metavar="S",
+        help="Anti-aliasing super-sample factor (e.g. 2 → render at 2× then box-average). Default: 1 (off).",
+    )
     args = parser.parse_args()
 
     console = Console()
@@ -159,7 +167,8 @@ def main() -> None:
                 dlambda=0.06,
                 max_steps=8000,
                 use_native_phase2=args.phase2_native,
-                disk=DiskConfig() if args.phase2_disk else None,
+                disk=DiskConfig() if getattr(args, "phase2_disk", False) else None,
+                supersample=getattr(args, "supersample", 1),
             )
         rgb, stats = render_schwarzschild_3d_image(cfg)
         write_ppm_rgb(args.phase2_out, rgb)
