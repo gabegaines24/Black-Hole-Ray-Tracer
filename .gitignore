@@ -47,9 +47,12 @@ env/
 *.pt
 *.h5
 *.joblib
-data/
-models/
-!models/README.md
+# Large dataset / model files inside ml/
+ml/data/*.npz
+ml/models/*.npz
+# Keep placeholder dirs tracked
+!ml/data/.gitkeep
+!ml/models/.gitkeep
 
 # --- IDEs and OS ---
 .vscode/
