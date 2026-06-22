@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 
+__all__ = ["render_schwarzschild_3d_image"]
+
 import numpy as np
 
 from .phase1 import RayStatus
