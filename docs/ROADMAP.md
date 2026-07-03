@@ -50,8 +50,9 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 **Known gaps**
 
-- Phase 2 render loop is still **Python-orchestrated** (per-pixel); optional **C per-ray** path when `use_native_phase2` + `_native_phase2` is installed (see `phase2_render`, `--phase2-native`).
-- No anti-aliasing, no accretion disk texture, no Kerr.
+- Pure-Python per-pixel loop remains the default fallback; use `--phase2-native`, `--phase2-cuda`, or `--phase2-ml` for batch backends.
+- Kerr spin in Phase 2 is out of scope (use Phase 3 / `phase3_driver`).
+- Pip-installable CUDA build (`setup.py` nvcc target) not yet implemented.
 
 **Acceptance (maintain)**
 
@@ -132,7 +133,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | `--phase1-step-e` | Step E PPM (`--ppm-out`, `--img-width`, `--img-height`, `--preset`) |
 | `--phase1-step-f` | Step F report |
 | `--phase2-report` | Phase 2 presets + benchmark |
-| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags; `--phase2-native` for C CPU batch; `--phase2-cuda` for GPU batch) |
+| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, size flags; `--phase2-native` CPU batch; `--phase2-cuda` GPU; `--phase2-ml` surrogate; `--aa` anti-alias) |
 
 ### `python -m blackhole_ray_tracer.phase1_driver`
 
@@ -145,10 +146,24 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | Flag | Purpose |
 |------|---------|
 | `--report` | Presets + `dlambda` benchmark |
-| `--render` | 3D PPM (`--out`, `--preset` or `--width`/`--height`/`--dlambda`/…) |
-| `--native` | Use C extension per ray when `_native_phase2` is installed |
+| `--render` | 3D PPM (`--out`, `--preset` or size/integration flags) |
+| `--native` | C CPU batch (`_native_phase2`) |
+| `--cuda` | GPU batch (`libbh_rt_phase2_cuda.so`) |
+| `--ml` | ML surrogate batch (`RuntimeGate`; `--ml-model-path`) |
 
 Installation: typically `PYTHONPATH=src` when developing from checkout without reinstall.
+
+---
+
+## Next roads (not yet started)
+
+| Road | Focus | Starting point |
+|------|--------|----------------|
+| **D — Visual / UX** | Streamlit dashboard, richer sky/disk, preview controls | `preview.py`, `pyproject.toml` `viz` group |
+| **E — Numerical quality** | Adaptive `dlambda`, edge-case tests, Phase 1 C SoA batch | `phase1.rk4_step`, `docs/STATE_API.md` |
+| **F — Release** | Prebuilt wheels, Windows native docs polish | `setup.py`, `README.md` |
+
+Completed since the status plan: **B** Kerr C kernel, **A** CUDA render wiring, **C** ML `RuntimeGate` in render, partial **F** doc sync (this section).
 
 ---
 

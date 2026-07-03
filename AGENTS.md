@@ -6,13 +6,13 @@ Human and AI collaborators: read **`docs/OVERVIEW.md`** and **`docs/ROADMAP.md`*
 
 ## Quick rules
 
-1. **Truth about layout:** `kernel/`, `bridge/`, and `ml/` contain implemented source — verify file contents before claiming a feature exists. Kerr C kernel: `bh_rt_kerr_phase3_*`; ML is scaffold-only in the render path.
+1. **Truth about layout:** `kernel/`, `bridge/`, and `ml/` are implemented — verify file contents before claiming a feature exists.
 2. **Phases:** Keep `phase1` (equatorial / shared RK4) and `phase2` (3D prototype) modular; extend via `phaseN_*`, `kernel/`, or documented APIs.
 3. **Shared integrator:** Prefer `phase1.rk4_step` for Python RK4 unless migrating to C.
 4. **Quality bar:** Run `uv run pytest` after substantive Python changes; `uv run ruff check src tests` when convenient.
 5. **Artifacts:** Never commit tracked `*.ppm` (ignored in `.gitignore`) or `__pycache__/`.
 6. **Diffs:** Smallest correct change only; avoid drive-by refactors.
 7. **Uncertainty:** Say when unsure and read the repo rather than hallucinating filenames or formulas.
-8. **Future Kerr docs:** Prefer **Boyer–Lindquist** naming when documenting coordinate extensions.
+8. **Kerr coordinates:** Use **Boyer–Lindquist** naming in docs and code (`phase3_*`, `bh_rt_kerr_phase3_*`).
 
 Copy-paste session starter for Claude/composer-sized tasks: **`docs/AGENT_PROMPT.md`**.

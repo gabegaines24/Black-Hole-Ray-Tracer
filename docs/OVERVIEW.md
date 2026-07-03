@@ -46,8 +46,8 @@ flowchart TB
   cli --> pyproto
   pyproto --> bridge
   bridge --> kernel
-  pyproto -.-> ml
-  cuda -.->|"ctypes, optional"| pyproto
+  pyproto --> ml
+  pyproto --> cuda
 ```
 
 ## Conventions and strategy
@@ -82,7 +82,9 @@ uv run mypy src       # after dev group
 | `src/blackhole_ray_tracer/phase2_geodesic.py` | 3D null RK4 tracer |
 | `src/blackhole_ray_tracer/phase2_camera.py` | Static observer pinhole → initial null 4-velocity |
 | `src/blackhole_ray_tracer/phase2_types.py` | `Phase2RenderConfig`, camera, trace result types |
-| `src/blackhole_ray_tracer/phase2_render.py` | Per-pixel pinhole image loop; optional **`use_native_phase2`** → `_native_phase2` |
+| `src/blackhole_ray_tracer/phase2_render.py` | Pinhole image; backends: python, `native_batch`, `cuda_batch`, `ml_surrogate` |
+| `src/blackhole_ray_tracer/phase2_ml.py` | ML `RuntimeGate` batch dispatch (`use_ml_surrogate`) |
+| `src/blackhole_ray_tracer/native_phase2_cuda.py` | Optional CUDA ctypes loader (`use_cuda_batch`) |
 | `src/blackhole_ray_tracer/phase2_report.py` | Phase 2 presets + benchmark text |
 | `src/blackhole_ray_tracer/phase2_driver.py` | Phase 2 `--render` / `--report` CLI |
 | `src/blackhole_ray_tracer/phase3_christoffel.py` | Kerr Christoffel / ODE RHS (BL coords) |
