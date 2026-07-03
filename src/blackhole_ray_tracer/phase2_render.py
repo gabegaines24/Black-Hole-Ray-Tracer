@@ -27,6 +27,7 @@ from .native_phase2 import (
     schwarzschild_phase2_trace_native,
 )
 from .native_phase2_cuda import cuda_batch_available, schwarzschild_phase2_batch_cuda
+from .phase2_ml import ml_surrogate_available, schwarzschild_phase2_batch_ml
 
 
 def _sky_rgb_from_direction(
@@ -49,7 +50,9 @@ def render_schwarzschild_3d_image(
 
     When ``cfg.use_cuda_batch`` is True and ``libbh_rt_phase2_cuda.so`` is loadable,
     the GPU batch kernel is used.  When ``cfg.use_native_phase2`` is True the native
-    C CPU batch kernel is used (one call for the entire pixel grid).
+    C CPU batch kernel is used.  When ``cfg.use_ml_surrogate`` is True the
+    ``RuntimeGate`` routes far-field rays to the MLP surrogate and integrates
+    near-horizon rays with Python RK4.
 
     When ``cfg.supersample > 1`` renders at ``(W*s, H*s)`` then box-averages
     down to ``(W, H)`` for anti-aliasing.
@@ -72,6 +75,12 @@ def render_schwarzschild_3d_image(
             "`make -C kernel/cuda cuda_batch` or set BLACKHOLE_CUDA_LIB."
         )
 
+    if cfg.use_ml_surrogate and not ml_surrogate_available(cfg):
+        raise RuntimeError(
+            "Phase2RenderConfig.use_ml_surrogate is True but no surrogate model was found. "
+            "Train with `uv run python -m ml.surrogate train` or pass --ml-model-path."
+        )
+
     if cfg.use_native_phase2 and not native_phase2_available() and not cfg.use_cuda_batch:
         raise RuntimeError(
             "Phase2RenderConfig.use_native_phase2 is True but extension "
@@ -85,9 +94,15 @@ def render_schwarzschild_3d_image(
 
     use_cuda = cfg.use_cuda_batch and cuda_batch_available()
     use_batch = cfg.use_native_phase2 and batch_native_available() and not use_cuda
+    use_ml = cfg.use_ml_surrogate and not use_cuda and not use_batch
 
-    if use_cuda or use_batch:
-        backend = "cuda_batch" if use_cuda else "native_batch"
+    if use_cuda or use_batch or use_ml:
+        if use_cuda:
+            backend = "cuda_batch"
+        elif use_batch:
+            backend = "native_batch"
+        else:
+            backend = "ml_surrogate"
         y0 = build_camera_y0(cfg)
         if use_cuda:
             result = schwarzschild_phase2_batch_cuda(
@@ -98,7 +113,7 @@ def render_schwarzschild_3d_image(
                 r_escape=cfg.r_escape,
                 r_horizon_epsilon=cfg.r_horizon_epsilon,
             )
-        else:
+        elif use_batch:
             result = schwarzschild_phase2_batch_native(
                 y0,
                 m=cfg.m,
@@ -107,6 +122,8 @@ def render_schwarzschild_3d_image(
                 r_escape=cfg.r_escape,
                 r_horizon_epsilon=cfg.r_horizon_epsilon,
             )
+        else:
+            result = schwarzschild_phase2_batch_ml(y0, cfg)
         statuses = ray_status_array_from_native(result["status"])
         eq_r_cross_arr: np.ndarray | None = result.get("eq_r_cross")
 
@@ -241,7 +258,7 @@ def render_schwarzschild_3d_image(
                         n_other += 1
 
     total = max(h * w, 1)
-    stats = {
+    stats: dict[str, float] = {
         "captured": n_cap,
         "escaped": n_esc,
         "other": n_other,
@@ -249,4 +266,7 @@ def render_schwarzschild_3d_image(
         "backend": backend,
         "supersample": max(getattr(cfg, "supersample", 1), 1),
     }
+    if backend == "ml_surrogate":
+        stats["n_surrogate"] = float(result.get("n_surrogate", 0))
+        stats["n_integrated"] = float(result.get("n_integrated", 0))
     return rgb, stats

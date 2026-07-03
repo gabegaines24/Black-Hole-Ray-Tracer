@@ -43,6 +43,10 @@ class Phase2RenderConfig:
     use_native_phase2: bool = False
     # If True and `libbh_rt_phase2_cuda.so` is loadable, use GPU batch trace.
     use_cuda_batch: bool = False
+    # If True, route far-field rays through the ML surrogate (see ml/runtime_gate.py).
+    use_ml_surrogate: bool = False
+    ml_model_path: str | None = None
+    ml_r_threshold: float = 10.0
     # Optional thin accretion disk.  None = disabled.
     disk: DiskConfig | None = None
     # Super-sample factor: render at (W*s, H*s) then box-average to (W, H). 1 = disabled.

@@ -92,6 +92,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | Disk detection in native batch path (`eq_r_cross`) | Done | `kernel/.../batch.c`, `bridge/`, `phase2_render.py` |
 | Anti-aliasing (supersample + box-average) | Done | `phase2_types.py` supersample field, `phase2_render.py`, `--aa` flag |
 | ML scaffold (schema, dataset, surrogate, gate) | Done | `ml/` |
+| ML render wiring | Done | `phase2_ml.py`, `Phase2RenderConfig.use_ml_surrogate`, `--phase2-ml` |
 | ML end-to-end tests | Done | `tests/test_ml.py` |
 
 **Acceptance**
@@ -183,4 +184,5 @@ Installation: typically `PYTHONPATH=src` when developing from checkout without r
 - [x] Equatorial crossing output in C batch kernel (`out_eq_r_cross`) → disk detection in native batch path.
 - [x] Anti-aliasing supersample (`Phase2RenderConfig.supersample`, `--aa` CLI flag).
 - [x] ML end-to-end tests (`tests/test_ml.py`): schema, dataset shapes, surrogate forward, gate routing.
+- [x] ML render wiring (`Phase2RenderConfig.use_ml_surrogate`, `phase2_ml.py`, `--phase2-ml`).
 - [x] CUDA render wiring (`Phase2RenderConfig.use_cuda_batch`, `--phase2-cuda`, `phase2_driver --cuda`).

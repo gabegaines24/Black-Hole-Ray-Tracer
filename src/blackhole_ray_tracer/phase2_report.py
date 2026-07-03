@@ -115,6 +115,8 @@ def render_config_from_preset(
     *,
     use_native_phase2: bool = False,
     use_cuda_batch: bool = False,
+    use_ml_surrogate: bool = False,
+    ml_model_path: str | None = None,
 ) -> Phase2RenderConfig:
     p = PRESETS[name]
     return Phase2RenderConfig(
@@ -131,4 +133,6 @@ def render_config_from_preset(
         sky_mode=sky_mode,
         use_native_phase2=use_native_phase2,
         use_cuda_batch=use_cuda_batch,
+        use_ml_surrogate=use_ml_surrogate,
+        ml_model_path=ml_model_path,
     )

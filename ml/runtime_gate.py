@@ -157,3 +157,94 @@ class RuntimeGate:
             steps_taken=res.steps_taken,
             from_surrogate=False,
         )
+
+    def infer_or_integrate_batch(
+        self,
+        y0_batch: np.ndarray,
+        m: float,
+        dlambda: float,
+        max_steps: int,
+        r_escape: float,
+        r_horizon_epsilon: float = 1e-3,
+    ) -> dict[str, Any]:
+        """Route each ray in a batch to surrogate or RK4.
+
+        Parameters
+        ----------
+        y0_batch : float64 (N, 8) row-major initial states.
+
+        Returns
+        -------
+        dict with arrays status, steps_taken, termination_r, r_min, eq_r_cross (NaN),
+        plus n_surrogate and n_integrated counts.
+        """
+        batch = np.asarray(y0_batch, dtype=np.float64)
+        if batch.ndim != 2 or batch.shape[1] != 8:
+            raise ValueError(f"y0_batch must be shape (N, 8), got {batch.shape}")
+        n = batch.shape[0]
+        out_status = np.empty(n, dtype=np.int32)
+        out_steps = np.empty(n, dtype=np.int32)
+        out_term_r = np.empty(n, dtype=np.float64)
+        out_r_min = np.empty(n, dtype=np.float64)
+        out_eq_r_cross = np.full(n, np.nan, dtype=np.float64)
+
+        n_surrogate = 0
+        n_integrated = 0
+
+        use_surrogate = self._weights is not None
+        far_idx: np.ndarray
+        near_idx: np.ndarray
+        if use_surrogate:
+            far_mask = batch[:, 1] > self._threshold
+            far_idx = np.nonzero(far_mask)[0]
+            near_idx = np.nonzero(~far_mask)[0]
+        else:
+            far_idx = np.array([], dtype=np.int64)
+            near_idx = np.arange(n, dtype=np.int64)
+
+        if use_surrogate and far_idx.size > 0:
+            from ml.surrogate import predict_batch
+
+            rows = batch[far_idx]
+            x_raw = np.column_stack(
+                [rows[:, 1], rows[:, 2], rows[:, 3], rows[:, 5], rows[:, 6], rows[:, 7]]
+            ).astype(np.float32)
+            x_norm = normalize_inputs(x_raw)
+            pred = predict_batch(self._weights, x_norm)
+            for j, i in enumerate(far_idx):
+                status = int(round(float(pred[j, 0])))
+                if status not in (STATUS_CAPTURED, STATUS_ESCAPED, STATUS_MAX_STEPS, STATUS_NUMERIC):
+                    status = STATUS_MAX_STEPS
+                out_status[i] = status
+                r_min = float(pred[j, 1])
+                term_r = float(pred[j, 2])
+                steps = max(0, int(round(float(pred[j, 3]))))
+                out_r_min[i] = r_min if math.isfinite(r_min) else np.nan
+                out_term_r[i] = term_r if math.isfinite(term_r) else np.nan
+                out_steps[i] = steps
+                n_surrogate += 1
+
+        for i in near_idx:
+            res = self._full_integrate(
+                batch[i],
+                m,
+                dlambda,
+                max_steps,
+                r_escape,
+                r_horizon_epsilon,
+            )
+            out_status[i] = res.status
+            out_steps[i] = res.steps_taken
+            out_term_r[i] = res.termination_r
+            out_r_min[i] = res.r_min
+            n_integrated += 1
+
+        return {
+            "status": out_status,
+            "steps_taken": out_steps,
+            "termination_r": out_term_r,
+            "r_min": out_r_min,
+            "eq_r_cross": out_eq_r_cross,
+            "n_surrogate": n_surrogate,
+            "n_integrated": n_integrated,
+        }

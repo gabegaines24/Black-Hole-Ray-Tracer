@@ -29,7 +29,7 @@ Tooling: `pyproject.toml` — `uv` for env/lockfile; dependency group `dev` has 
 |------|-----------|------|
 | **C kernel** | `kernel/` | RK4 core; Schwarzschild 2D/3D + **Kerr Phase 3** Christoffel tracers; SoA batch APIs |
 | **Bridge** | `bridge/module_phase2.cpp`, `bridge/module_phase3.cpp` | PyBind11 `_native_phase2` (Schwarzschild batch) and `_native_phase3` (Kerr batch) |
-| **ML scaffold** | `ml/` | NumPy MLP surrogate, dataset generator, `RuntimeGate` (not yet wired into render) |
+| **ML scaffold** | `ml/` | NumPy MLP surrogate, dataset generator, `RuntimeGate`; wired into `phase2_render` via `use_ml_surrogate` |
 | **CUDA (optional)** | `kernel/cuda/`, `native_phase2_cuda.py` | GPU batch kernel + ctypes loader; wired into `phase2_render` via `use_cuda_batch` |
 
 High-level layering:

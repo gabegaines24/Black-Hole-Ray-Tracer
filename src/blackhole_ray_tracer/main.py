@@ -95,6 +95,17 @@ def main() -> None:
         help="With --phase2-render: use GPU batch kernel (libbh_rt_phase2_cuda.so); requires nvcc build.",
     )
     parser.add_argument(
+        "--phase2-ml",
+        action="store_true",
+        help="With --phase2-render: use ML surrogate for far-field rays (see ml/runtime_gate.py).",
+    )
+    parser.add_argument(
+        "--ml-model-path",
+        type=str,
+        default=None,
+        help="Path to trained surrogate .npz (with --phase2-ml). Default: ml/models/surrogate.npz",
+    )
+    parser.add_argument(
         "--phase2-disk",
         action="store_true",
         help="With --phase2-render: enable the thin equatorial accretion disk overlay.",
@@ -147,6 +158,8 @@ def main() -> None:
                 sky_mode="gradient",
                 use_native_phase2=args.phase2_native,
                 use_cuda_batch=args.phase2_cuda,
+                use_ml_surrogate=args.phase2_ml,
+                ml_model_path=args.ml_model_path,
             )
             if args.phase2_disk:
                 cfg = Phase2RenderConfig(
@@ -164,6 +177,8 @@ def main() -> None:
                     sky_mode=cfg.sky_mode,
                     use_native_phase2=cfg.use_native_phase2,
                     use_cuda_batch=cfg.use_cuda_batch,
+                    use_ml_surrogate=cfg.use_ml_surrogate,
+                    ml_model_path=cfg.ml_model_path,
                     disk=DiskConfig(),
                 )
         else:
@@ -175,6 +190,8 @@ def main() -> None:
                 max_steps=8000,
                 use_native_phase2=args.phase2_native,
                 use_cuda_batch=args.phase2_cuda,
+                use_ml_surrogate=args.phase2_ml,
+                ml_model_path=args.ml_model_path,
                 disk=DiskConfig() if getattr(args, "phase2_disk", False) else None,
                 supersample=getattr(args, "supersample", 1),
             )
