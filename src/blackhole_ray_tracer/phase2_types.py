@@ -41,6 +41,8 @@ class Phase2RenderConfig:
     sky_mode: str = "gradient"  # "gradient" | "flat"
     # If True and `blackhole_ray_tracer._native_phase2` is installed, use C RK4 per pixel.
     use_native_phase2: bool = False
+    # If True and `libbh_rt_phase2_cuda.so` is loadable, use GPU batch trace.
+    use_cuda_batch: bool = False
     # Optional thin accretion disk.  None = disabled.
     disk: DiskConfig | None = None
     # Super-sample factor: render at (W*s, H*s) then box-average to (W, H). 1 = disabled.

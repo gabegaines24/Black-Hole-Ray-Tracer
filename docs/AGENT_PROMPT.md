@@ -28,13 +28,15 @@ You are assisting on **blackhole_ray_tracer**, a Python-first numerical null-geo
 - `bh_rt_rk4.c/.h` — generic RK4 step
 - `bh_rt_schwarzschild_phase2.c/.h` — single-ray 3D Schwarzschild trace
 - `bh_rt_schwarzschild_phase2_batch.c/.h` — N-ray SoA batch trace (outputs: status, steps_taken, termination_r, r_min, **eq_r_cross**)
+- `bh_rt_kerr_phase3.c/.h`, `bh_rt_kerr_phase3_batch.c/.h` — Kerr BL single + batch trace (parity with `phase3_geodesic.py`)
 - `bh_rt_schwarzschild_phase2_internal.h` — shared step helpers (Christoffel, renormalize, etc.)
 - `bh_rt_status.h` — canonical `BH_RT_STATUS_*` int constants (0–3)
 - `kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu` — CUDA batch kernel (buildable via `kernel/cuda/Makefile`)
 
 **Bridge** (`bridge/`):
-- `module_phase2.cpp` — PyBind11 `_native_phase2` module; exposes both
+- `module_phase2.cpp` — PyBind11 `_native_phase2` module; exposes
   `schwarzschild_phase2_trace` (single-ray) and `schwarzschild_phase2_batch_trace` (batch with `eq_r_cross`).
+- `module_phase3.cpp` — PyBind11 `_native_phase3` module; Kerr single + batch trace.
 
 **Build**:
 - `setup.py` — builds `blackhole_ray_tracer._native_phase2`; optional on Windows

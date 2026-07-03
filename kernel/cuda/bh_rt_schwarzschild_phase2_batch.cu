@@ -123,7 +123,8 @@ extern "C" __global__ void bh_rt_phase2_batch_kernel(
     int    *out_status,
     int    *out_steps_taken,
     double *out_termination_r,
-    double *out_r_min)
+    double *out_r_min,
+    double *out_eq_r_cross)
 {
   int ray = blockIdx.x * blockDim.x + threadIdx.x;
   if (ray >= n) return;
@@ -135,15 +136,19 @@ extern "C" __global__ void bh_rt_phase2_batch_kernel(
   double r_cap = 2.0 * m + r_horizon_epsilon;
   d_renormalize(y, m);
 
+  const double PI_HALF = 1.5707963267948966;
   double r_min_val = INFINITY;
   double lam = 0.0;
   int status = BH_RT_STATUS_MAX_STEPS;
   double termination_r = NAN;
+  double eq_r_cross = NAN;
   int steps_taken = 0;
   int broke = 0;
+  double prev_dth = y[2] - PI_HALF;
 
   for (int step_idx = 0; step_idx < max_steps; ++step_idx) {
     double r = y[1];
+    double th = y[2];
     if (!d_all_finite(y)) {
       status = BH_RT_STATUS_NUMERICAL_ERROR;
       termination_r = r; steps_taken = step_idx; broke = 1; break;
@@ -157,6 +162,12 @@ extern "C" __global__ void bh_rt_phase2_batch_kernel(
       termination_r = r; steps_taken = step_idx; broke = 1; break;
     }
     if (isfinite(r)) r_min_val = fmin(r_min_val, r);
+    if (!isfinite(eq_r_cross)) {
+      double cur_dth = th - PI_HALF;
+      if (step_idx > 0 && prev_dth * cur_dth < 0.0 && isfinite(r))
+        eq_r_cross = r;
+      prev_dth = cur_dth;
+    }
     d_rk4_step(lam, y, dlambda, m);
     if ((step_idx % 4) == 0) d_renormalize(y, m);
     lam += dlambda;
@@ -175,6 +186,7 @@ extern "C" __global__ void bh_rt_phase2_batch_kernel(
   out_steps_taken[ray]   = steps_taken;
   out_termination_r[ray] = termination_r;
   out_r_min[ray]         = r_min_val;
+  out_eq_r_cross[ray]    = eq_r_cross;
 }
 
 /* ── host-side launcher (C linkage, callable from Python ctypes or bridge) ── */
@@ -190,18 +202,20 @@ extern "C" void bh_rt_schwarzschild_phase2_batch_trace_cuda(
     int    *h_status,
     int    *h_steps,
     double *h_term_r,
-    double *h_r_min)
+    double *h_r_min,
+    double *h_eq_r_cross)
 {
   size_t y0_bytes     = (size_t)n * N_STATE * sizeof(double);
   size_t int_bytes    = (size_t)n * sizeof(int);
   size_t double_bytes = (size_t)n * sizeof(double);
 
-  double *d_y0; int *d_status, *d_steps; double *d_term_r, *d_r_min;
+  double *d_y0; int *d_status, *d_steps; double *d_term_r, *d_r_min, *d_eq_r_cross;
   cudaMalloc(&d_y0,     y0_bytes);
   cudaMalloc(&d_status, int_bytes);
   cudaMalloc(&d_steps,  int_bytes);
   cudaMalloc(&d_term_r, double_bytes);
   cudaMalloc(&d_r_min,  double_bytes);
+  cudaMalloc(&d_eq_r_cross, double_bytes);
 
   cudaMemcpy(d_y0, h_y0, y0_bytes, cudaMemcpyHostToDevice);
 
@@ -209,14 +223,15 @@ extern "C" void bh_rt_schwarzschild_phase2_batch_trace_cuda(
   int grid  = (n + block - 1) / block;
   bh_rt_phase2_batch_kernel<<<grid, block>>>(
       d_y0, n, m, dlambda, max_steps, r_escape, r_horizon_epsilon,
-      d_status, d_steps, d_term_r, d_r_min);
+      d_status, d_steps, d_term_r, d_r_min, d_eq_r_cross);
   cudaDeviceSynchronize();
 
   cudaMemcpy(h_status, d_status, int_bytes,    cudaMemcpyDeviceToHost);
   cudaMemcpy(h_steps,  d_steps,  int_bytes,    cudaMemcpyDeviceToHost);
   cudaMemcpy(h_term_r, d_term_r, double_bytes, cudaMemcpyDeviceToHost);
   cudaMemcpy(h_r_min,  d_r_min,  double_bytes, cudaMemcpyDeviceToHost);
+  cudaMemcpy(h_eq_r_cross, d_eq_r_cross, double_bytes, cudaMemcpyDeviceToHost);
 
   cudaFree(d_y0); cudaFree(d_status); cudaFree(d_steps);
-  cudaFree(d_term_r); cudaFree(d_r_min);
+  cudaFree(d_term_r); cudaFree(d_r_min); cudaFree(d_eq_r_cross);
 }

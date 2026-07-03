@@ -114,6 +114,7 @@ def render_config_from_preset(
     sky_mode: str = "gradient",
     *,
     use_native_phase2: bool = False,
+    use_cuda_batch: bool = False,
 ) -> Phase2RenderConfig:
     p = PRESETS[name]
     return Phase2RenderConfig(
@@ -129,4 +130,5 @@ def render_config_from_preset(
         r_escape=p["r_escape"],
         sky_mode=sky_mode,
         use_native_phase2=use_native_phase2,
+        use_cuda_batch=use_cuda_batch,
     )

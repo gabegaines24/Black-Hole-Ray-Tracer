@@ -4,12 +4,10 @@ Falls back to CPU batch automatically if the CUDA shared library is not found.
 
 The CUDA library is NOT built by default (requires nvcc + GPU).  Build with:
 
-    nvcc -O2 -arch=sm_75 -Ikernel/include --compiler-options -fPIC -shared \\
-         -o build/libbh_rt_phase2_cuda.so \\
-         kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu
+    make -C kernel/cuda cuda_batch
 
 Then set BLACKHOLE_CUDA_LIB=/path/to/libbh_rt_phase2_cuda.so, or place the
-file in the package root.
+file in build/.
 """
 
 from __future__ import annotations
@@ -30,7 +28,6 @@ def _find_cuda_lib() -> Path | None:
     if env:
         p = Path(env)
         return p if p.exists() else None
-    # Search standard locations relative to the package
     candidates = [
         Path(__file__).resolve().parents[2] / "build" / "libbh_rt_phase2_cuda.so",
         Path(__file__).resolve().parents[2] / "build" / "libbh_rt_phase2_cuda.dll",
@@ -54,17 +51,18 @@ def _load_cuda_lib() -> ctypes.CDLL | None:
         lib = ctypes.CDLL(str(lib_path))
         fn = lib.bh_rt_schwarzschild_phase2_batch_trace_cuda
         fn.argtypes = [
-            ctypes.POINTER(ctypes.c_double),  # y0
-            ctypes.c_int,                     # n
-            ctypes.c_double,                  # m
-            ctypes.c_double,                  # dlambda
-            ctypes.c_int,                     # max_steps
-            ctypes.c_double,                  # r_escape
-            ctypes.c_double,                  # r_horizon_epsilon
-            ctypes.POINTER(ctypes.c_int),     # out_status
-            ctypes.POINTER(ctypes.c_int),     # out_steps_taken
-            ctypes.POINTER(ctypes.c_double),  # out_termination_r
-            ctypes.POINTER(ctypes.c_double),  # out_r_min
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_int,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
         ]
         fn.restype = None
         _LIB = lib
@@ -87,22 +85,12 @@ def schwarzschild_phase2_batch_cuda(
     *,
     r_horizon_epsilon: float = 1e-3,
 ) -> dict[str, Any]:
-    """Trace N null geodesics on the GPU via the CUDA batch kernel.
-
-    Parameters
-    ----------
-    y0_batch : float64 (N, 8) C-contiguous
-
-    Returns
-    -------
-    dict with status(N,int32), steps_taken(N,int32),
-         termination_r(N,float64), r_min(N,float64)
-    """
+    """Trace N null geodesics on the GPU via the CUDA batch kernel."""
     lib = _load_cuda_lib()
     if lib is None:
         raise RuntimeError(
-            "CUDA batch library not found. Build kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu "
-            "with nvcc and set BLACKHOLE_CUDA_LIB=<path>."
+            "CUDA batch library not found. Build with `make -C kernel/cuda cuda_batch` "
+            "and set BLACKHOLE_CUDA_LIB=<path>."
         )
     batch = np.ascontiguousarray(y0_batch, dtype=np.float64)
     if batch.ndim != 2 or batch.shape[1] != 8:
@@ -111,24 +99,30 @@ def schwarzschild_phase2_batch_cuda(
     flat = batch.ravel()
     c_y0 = flat.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
-    out_status  = np.empty(n, dtype=np.int32)
-    out_steps   = np.empty(n, dtype=np.int32)
-    out_term_r  = np.empty(n, dtype=np.float64)
-    out_r_min   = np.empty(n, dtype=np.float64)
+    out_status = np.empty(n, dtype=np.int32)
+    out_steps = np.empty(n, dtype=np.int32)
+    out_term_r = np.empty(n, dtype=np.float64)
+    out_r_min = np.empty(n, dtype=np.float64)
+    out_eq_r_cross = np.empty(n, dtype=np.float64)
 
     lib.bh_rt_schwarzschild_phase2_batch_trace_cuda(
-        c_y0, ctypes.c_int(n),
-        ctypes.c_double(m), ctypes.c_double(dlambda),
-        ctypes.c_int(max_steps), ctypes.c_double(r_escape),
+        c_y0,
+        ctypes.c_int(n),
+        ctypes.c_double(m),
+        ctypes.c_double(dlambda),
+        ctypes.c_int(max_steps),
+        ctypes.c_double(r_escape),
         ctypes.c_double(r_horizon_epsilon),
         out_status.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
         out_steps.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
         out_term_r.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         out_r_min.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        out_eq_r_cross.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
     )
     return {
-        "status":        out_status,
-        "steps_taken":   out_steps,
+        "status": out_status,
+        "steps_taken": out_steps,
         "termination_r": out_term_r,
-        "r_min":         out_r_min,
+        "r_min": out_r_min,
+        "eq_r_cross": out_eq_r_cross,
     }
