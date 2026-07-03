@@ -22,7 +22,7 @@ You are assisting on **blackhole_ray_tracer**, a Python-first numerical null-geo
 - Phase 2: `phase2_christoffel.py`, `phase2_geodesic.py`, `phase2_camera.py`, `phase2_types.py`,
   `phase2_render.py`, `phase2_report.py`, `phase2_driver.py`, `phase2_batch.py`, `phase2_disk.py`
 - **Phase 3 (Kerr)**: `phase3_christoffel.py`, `phase3_geodesic.py`, `phase3_types.py`, `phase3_render.py`
-- Native bridge wrappers: `native_phase2.py`, `native_phase2_cuda.py`
+- Native bridge wrappers: `native_phase2.py`, `native_phase3.py`, `native_phase2_cuda.py`
 
 **C kernel** (`kernel/src/`, `kernel/include/`):
 - `bh_rt_rk4.c/.h` — generic RK4 step

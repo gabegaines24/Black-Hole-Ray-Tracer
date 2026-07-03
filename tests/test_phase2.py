@@ -166,5 +166,5 @@ def test_render_native_matches_python_when_extension_present() -> None:
     assert st_py["captured"] == st_na["captured"]
     assert st_py["escaped"] == st_na["escaped"]
     assert st_py["other"] == st_na["other"]
-    assert st_na.get("backend") == "native"
+    assert st_na.get("backend") in ("native", "native_batch")
     assert np.allclose(rgb_py, rgb_na, rtol=0.0, atol=1e-5)

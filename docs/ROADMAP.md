@@ -60,7 +60,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 ---
 
-### Phase 2+ / kernel bridge — in progress
+### Phase 2+ / kernel bridge — substantially complete
 
 | Item | Goal | Status |
 |------|------|--------|
@@ -69,14 +69,15 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | **Phase A harmonic parity** | C vs `phase1.run_rk4_sanity` | Done: [`kernel/src/demo_harmonic.c`](../kernel/src/demo_harmonic.c), `make -C kernel`, [`tests/test_kernel_harmonic_parity.py`](../tests/test_kernel_harmonic_parity.py) (skips if no C toolchain) |
 | **Schwarzschild \(2D equatorial\) kernel** | `u(\phi)=1/r` loop vs `phase1.trace_single_schwarzschild_ray` | Done: [`kernel/include/bh_rt_schwarzschild_u.h`](../kernel/include/bh_rt_schwarzschild_u.h), [`kernel/src/bh_rt_schwarzschild_u.c`](../kernel/src/bh_rt_schwarzschild_u.c), [`kernel/src/demo_schwarzschild_u.c`](../kernel/src/demo_schwarzschild_u.c), [`tests/test_kernel_schwarzschild_u_parity.py`](../tests/test_kernel_schwarzschild_u_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
 | **Schwarzschild / Phase 2 \(3D Christoffel\) kernel** | Match `phase2_geodesic` Python RHS + termination | Done: [`kernel/include/bh_rt_schwarzschild_phase2.h`](../kernel/include/bh_rt_schwarzschild_phase2.h), [`kernel/src/bh_rt_schwarzschild_phase2.c`](../kernel/src/bh_rt_schwarzschild_phase2.c), [`tests/test_kernel_phase2_parity.py`](../tests/test_kernel_phase2_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
-| **`bridge/`** | pybind11 — single-ray Phase 3D trace (+ future batch API) | Started: [`bridge/module_phase2.cpp`](../bridge/module_phase2.cpp) → **`_native_phase2`**; optional **per-pixel** use from [`phase2_render.py`](../src/blackhole_ray_tracer/phase2_render.py) (`use_native_phase2`); pytest bridge parity skips if extension missing |
+| **SoA batched Schwarzschild bridge** | N-ray batch + `eq_r_cross` | Done: [`kernel/src/bh_rt_schwarzschild_phase2_batch.c`](../kernel/src/bh_rt_schwarzschild_phase2_batch.c), [`bridge/module_phase2.cpp`](../bridge/module_phase2.cpp), [`tests/test_kernel_phase2_batch_parity.py`](../tests/test_kernel_phase2_batch_parity.py) |
+| **`bridge/` Phase 2** | pybind11 single-ray + batch | Done: **`_native_phase2`**; optional use from [`phase2_render.py`](../src/blackhole_ray_tracer/phase2_render.py) (`use_native_phase2`, `--phase2-native`) |
+| **Kerr / Phase 3 C kernel** | Match `phase3_geodesic` Python RHS + termination | Done: [`kernel/src/bh_rt_kerr_phase3.c`](../kernel/src/bh_rt_kerr_phase3.c), [`kernel/src/bh_rt_kerr_phase3_batch.c`](../kernel/src/bh_rt_kerr_phase3_batch.c), [`bridge/module_phase3.cpp`](../bridge/module_phase3.cpp) → **`_native_phase3`**; optional use from [`phase3_render.py`](../src/blackhole_ray_tracer/phase3_render.py) (`use_native_phase3`, `phase3_driver --native`) |
 
 **Acceptance**
 
 - `make -C kernel` builds **`harmonic_demo`** and **`schwarzschild_demo`** where `cc`/`gcc`/`clang` exists.
-- **`uv pip install -e .` / `uv sync`** rebuilds **`_native_phase2`** where a suitable C++/C toolchain is configured ( MSVC / gcc / clang ).
+- **`uv pip install -e .` / `uv sync`** rebuilds **`_native_phase2`** and **`_native_phase3`** where a suitable C++/C toolchain is configured ( MSVC / gcc / clang ).
 - Full `pytest` run passes (kernel parity tests skip without a toolchain or when `SKIP_KERNEL_TESTS=1`; native bridge parity skips without the compiled extension).
-- SoA batched bridge API remains future work ([`STATE_API.md`](./STATE_API.md)).
 
 ---
 
@@ -176,6 +177,7 @@ Installation: typically `PYTHONPATH=src` when developing from checkout without r
 - [x] CUDA batch kernel (`kernel/cuda/`) + Python ctypes bridge (`native_phase2_cuda.py`).
 - [x] **Ignore `*.ppm` in `.gitignore`** — render outputs are binary and bloat history; keep them untracked (policy; see repo `.gitignore`).
 - [x] Kerr Boyer–Lindquist geodesic integrator (`phase3_christoffel.py`, `phase3_geodesic.py`) + render dispatcher + parity / conservation tests.
+- [x] Kerr C kernel + batch (`bh_rt_kerr_phase3_*`) + PyBind `_native_phase3` + optional native Kerr render path.
 - [x] Equatorial crossing output in C batch kernel (`out_eq_r_cross`) → disk detection in native batch path.
 - [x] Anti-aliasing supersample (`Phase2RenderConfig.supersample`, `--aa` CLI flag).
 - [x] ML end-to-end tests (`tests/test_ml.py`): schema, dataset shapes, surrogate forward, gate routing.

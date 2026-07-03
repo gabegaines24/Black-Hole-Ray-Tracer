@@ -37,6 +37,7 @@ def _build_config(args):
         sky_mode=args.sky,
         disk=disk,
         supersample=args.aa,
+        use_native_phase3=getattr(args, "native", False),
     )
 
 
@@ -62,6 +63,11 @@ def main(argv: list[str] | None = None) -> None:
                         help="Overlay thin equatorial accretion disk.")
     parser.add_argument("--aa", "--supersample", dest="aa", type=int, default=1, metavar="S",
                         help="Super-sample factor for anti-aliasing (1 = off, 2 = 2×).")
+    parser.add_argument(
+        "--native",
+        action="store_true",
+        help="Use Kerr C batch kernel when _native_phase3 is installed.",
+    )
 
     args = parser.parse_args(argv)
 

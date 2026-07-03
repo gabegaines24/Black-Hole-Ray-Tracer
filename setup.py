@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Setuptools glue for PyBind11 extension `blackhole_ray_tracer._native_phase2`.
+"""Setuptools glue for PyBind11 extensions `_native_phase2` and `_native_phase3`.
 
 On Windows we **skip** compiling the native module unless `BLACKHOLE_BUILD_NATIVE`
 is truthy (`1`) so plain `uv sync` works without Visual C++. Set
@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 def src(*parts: str) -> str:
-    return str(ROOT.joinpath(*parts))
+    return "/".join(parts)
 
 
 def _truthy(env: str) -> bool:
@@ -68,6 +68,19 @@ if should_build_native():
                 src("kernel", "src", "bh_rt_rk4.c"),
                 src("kernel", "src", "bh_rt_schwarzschild_phase2.c"),
                 src("kernel", "src", "bh_rt_schwarzschild_phase2_batch.c"),
+            ],
+            include_dirs=[
+                src("kernel", "include"),
+            ],
+            cxx_std=17,
+        ),
+        Pybind11Extension(
+            "blackhole_ray_tracer._native_phase3",
+            [
+                src("bridge", "module_phase3.cpp"),
+                src("kernel", "src", "bh_rt_rk4.c"),
+                src("kernel", "src", "bh_rt_kerr_phase3.c"),
+                src("kernel", "src", "bh_rt_kerr_phase3_batch.c"),
             ],
             include_dirs=[
                 src("kernel", "include"),

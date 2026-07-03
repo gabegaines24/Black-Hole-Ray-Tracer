@@ -32,6 +32,7 @@ class KerrRenderConfig:
     r_horizon_epsilon: float = 1e-3
     sky_mode: str = "gradient"
     use_native_phase2: bool = False   # if True and a=0, use C batch path
+    use_native_phase3: bool = False   # if True and a!=0, use Kerr C batch path
     disk: DiskConfig | None = None
     supersample: int = 1
 

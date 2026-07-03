@@ -51,10 +51,11 @@ int main(void) {
   int    steps[N_RAYS];
   double term_r[N_RAYS];
   double r_min[N_RAYS];
+  double eq_r_cross[N_RAYS];
 
   bh_rt_schwarzschild_phase2_batch_trace(
       y0, N_RAYS, m, 0.1, 4000, 80.0, 1e-3,
-      status, steps, term_r, r_min);
+      status, steps, term_r, r_min, eq_r_cross);
 
   printf("BH_PHASE2_BATCH_RESULT  ray  status         steps  term_r       r_min\n");
   for (int i = 0; i < N_RAYS; ++i) {

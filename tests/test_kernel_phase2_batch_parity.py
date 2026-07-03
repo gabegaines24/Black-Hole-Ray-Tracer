@@ -95,6 +95,7 @@ def batch_trace_fn(tmp_path_factory: pytest.TempPathFactory):
         ctypes.POINTER(ctypes.c_int),     # out_steps_taken
         ctypes.POINTER(ctypes.c_double),  # out_termination_r
         ctypes.POINTER(ctypes.c_double),  # out_r_min
+        ctypes.POINTER(ctypes.c_double),  # out_eq_r_cross
     ]
     fn.restype = None
     return fn
@@ -139,8 +140,9 @@ def _call_c_batch(fn, y0: np.ndarray, m: float, dlambda: float, max_steps: int,
     c_steps   = (ctypes.c_int * n)()
     c_term_r  = (ctypes.c_double * n)()
     c_r_min   = (ctypes.c_double * n)()
+    c_eq_r    = (ctypes.c_double * n)()
     fn(c_y0, n, m, dlambda, max_steps, r_escape, r_horizon_epsilon,
-       c_status, c_steps, c_term_r, c_r_min)
+       c_status, c_steps, c_term_r, c_r_min, c_eq_r)
     return (
         np.array(list(c_status), dtype=np.int32),
         np.array(list(c_steps),  dtype=np.int32),
