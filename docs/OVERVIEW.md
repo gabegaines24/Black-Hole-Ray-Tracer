@@ -24,7 +24,7 @@ Tooling: `pyproject.toml` — `uv` for env/lockfile; dependency group `dev` has 
 
 ### Planned / scaffold only (verify before assuming implementation)
 
-Directories **`kernel/`**, **`bridge/`**, and **`ml/`** are described in the README as the long-term split (pure C integration, pybind11 bridge, ML surrogate pipeline). **`kernel/`** hosts the **RK4** core, Phase A harmonic + Schwarzschild \(u(\phi)\), and Schwarzschild **Phase 3D** Christoffel trace paths (see roadmap). **`bridge/`** now builds `blackhole_ray_tracer._native_phase2`, which wraps **`bh_rt_schwarzschild_phase2_trace`**. **`ml/`** is still scaffold-only until Phase 3.
+Directories **`kernel/`**, **`bridge/`**, and **`ml/`** are described in the README as the long-term split (pure C integration, pybind11 bridge, ML surrogate pipeline). **`kernel/`** hosts the **RK4** core, Phase A harmonic + Schwarzschild \(u(\phi)\), Schwarzschild **Phase 3D** Christoffel trace paths, and a **CUDA batch** port (see roadmap). **`bridge/`** builds `blackhole_ray_tracer._native_phase2`, which wraps CPU single-ray and batch trace APIs. **`ml/`** provides schema, dataset generation, a NumPy surrogate, and a runtime gate (tested; not yet wired into the render loop).
 
 High-level layering:
 

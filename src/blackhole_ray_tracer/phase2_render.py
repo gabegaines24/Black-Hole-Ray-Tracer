@@ -26,6 +26,7 @@ from .native_phase2 import (
     schwarzschild_phase2_batch_native,
     schwarzschild_phase2_trace_native,
 )
+from .native_phase2_cuda import cuda_batch_available, schwarzschild_phase2_batch_cuda
 
 
 def _sky_rgb_from_direction(
@@ -48,6 +49,9 @@ def render_schwarzschild_3d_image(
 
     When ``cfg.use_native_phase2`` is True the native C batch kernel is used
     (one call for the entire pixel grid), replacing the Python ray-by-ray loop.
+    When ``cfg.use_cuda`` is True the CUDA batch kernel is preferred when
+    ``libbh_rt_phase2_cuda.so`` is available, with CPU native batch or Python
+    as fallbacks.
 
     When ``cfg.supersample > 1`` renders at ``(W*s, H*s)`` then box-averages
     down to ``(W, H)`` for anti-aliasing.
@@ -63,7 +67,7 @@ def render_schwarzschild_3d_image(
 
     h, w = cfg.height, cfg.width
 
-    if cfg.use_native_phase2 and not native_phase2_available():
+    if cfg.use_native_phase2 and not cfg.use_cuda and not native_phase2_available():
         raise RuntimeError(
             "Phase2RenderConfig.use_native_phase2 is True but extension "
             "`blackhole_ray_tracer._native_phase2` is not available. "
@@ -73,21 +77,37 @@ def render_schwarzschild_3d_image(
     rgb = np.zeros((h, w, 3), dtype=np.float32)
     n_cap = n_esc = n_other = 0
     backend = "python"
+    backend_warning: str | None = None
 
-    use_batch = cfg.use_native_phase2 and batch_native_available()
+    use_batch = False
+    batch_backend = "python"
+    if cfg.use_cuda:
+        if cuda_batch_available():
+            use_batch = True
+            batch_backend = "cuda_batch"
+        elif cfg.use_native_phase2 and batch_native_available():
+            use_batch = True
+            batch_backend = "native_batch"
+            backend_warning = "cuda_unavailable_fallback_native"
+    elif cfg.use_native_phase2 and batch_native_available():
+        use_batch = True
+        batch_backend = "native_batch"
 
     if use_batch:
-        # ── native batch path ────────────────────────────────────────────────
-        backend = "native_batch"
+        # ── native / CUDA batch path ─────────────────────────────────────────
+        backend = batch_backend
         y0 = build_camera_y0(cfg)   # (N, 8)
-        result = schwarzschild_phase2_batch_native(
-            y0,
+        batch_kwargs = dict(
             m=cfg.m,
             dlambda=cfg.dlambda,
             max_steps=cfg.max_steps,
             r_escape=cfg.r_escape,
             r_horizon_epsilon=cfg.r_horizon_epsilon,
         )
+        if batch_backend == "cuda_batch":
+            result = schwarzschild_phase2_batch_cuda(y0, **batch_kwargs)
+        else:
+            result = schwarzschild_phase2_batch_native(y0, **batch_kwargs)
         statuses = ray_status_array_from_native(result["status"])
         eq_r_cross_arr: np.ndarray | None = result.get("eq_r_cross")
 
@@ -137,7 +157,11 @@ def render_schwarzschild_3d_image(
 
     else:
         # ── Python (or single-ray native) fallback ───────────────────────────
-        use_native = cfg.use_native_phase2  # single-ray native, native_phase2 checked above
+        use_native = (
+            cfg.use_native_phase2
+            and not cfg.use_cuda
+            and native_phase2_available()
+        )
         if use_native:
             backend = "native"
 
@@ -222,7 +246,7 @@ def render_schwarzschild_3d_image(
                         n_other += 1
 
     total = max(h * w, 1)
-    stats = {
+    stats: dict[str, float | str | int] = {
         "captured": n_cap,
         "escaped": n_esc,
         "other": n_other,
@@ -230,4 +254,6 @@ def render_schwarzschild_3d_image(
         "backend": backend,
         "supersample": max(getattr(cfg, "supersample", 1), 1),
     }
+    if backend_warning is not None:
+        stats["backend_warning"] = backend_warning
     return rgb, stats

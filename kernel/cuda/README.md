@@ -53,8 +53,8 @@ Set `BLACKHOLE_CUDA_LIB=/path/to/libbh_rt_phase2_cuda.so` to override the automa
 ## Architecture notes
 
 The kernel mirrors the CPU batch kernel (`bh_rt_schwarzschild_phase2_batch.c`) with identical
-physics (Christoffel + RK4). Each CUDA thread traces one ray independently (embarrassingly
-parallel). No inter-thread communication is needed.
+physics (Christoffel + RK4) and outputs (`status`, `steps_taken`, `termination_r`, `r_min`,
+`eq_r_cross`). Each CUDA thread traces one ray independently (embarrassingly parallel).
 
 Grid/block sizing: 1 thread per ray, 256 threads per block (tunable).
 

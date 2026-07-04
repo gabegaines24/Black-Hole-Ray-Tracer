@@ -17,6 +17,7 @@ import argparse
 import time
 
 from .native_phase2 import batch_native_available
+from .native_phase2_cuda import cuda_batch_available
 from .phase2_render import render_schwarzschild_3d_image
 from .phase2_report import render_config_from_preset, PRESETS
 from .phase2_types import Phase2RenderConfig
@@ -31,16 +32,34 @@ def _build_config(
     width: int,
     height: int,
     use_native: bool,
+    use_cuda: bool = False,
 ) -> Phase2RenderConfig:
     if preset is not None:
-        return render_config_from_preset(preset, use_native_phase2=use_native)
+        cfg = render_config_from_preset(preset, use_native_phase2=use_native or use_cuda)
+        return Phase2RenderConfig(
+            width=cfg.width,
+            height=cfg.height,
+            m=cfg.m,
+            r_observer=cfg.r_observer,
+            observer_theta=cfg.observer_theta,
+            observer_phi=cfg.observer_phi,
+            fov_deg=cfg.fov_deg,
+            dlambda=cfg.dlambda,
+            max_steps=cfg.max_steps,
+            r_escape=cfg.r_escape,
+            r_horizon_epsilon=cfg.r_horizon_epsilon,
+            sky_mode=cfg.sky_mode,
+            use_native_phase2=use_native or use_cuda,
+            use_cuda=use_cuda,
+        )
     return Phase2RenderConfig(
         width=width,
         height=height,
         m=1.0,
         dlambda=0.1,
         max_steps=4000,
-        use_native_phase2=use_native,
+        use_native_phase2=use_native or use_cuda,
+        use_cuda=use_cuda,
     )
 
 
@@ -62,7 +81,12 @@ def run_preview(
             "Install it with: uv add matplotlib"
         ) from exc
 
-    backend_label = "native_batch" if (cfg.use_native_phase2 and batch_native_available()) else "python"
+    if cfg.use_cuda and cuda_batch_available():
+        backend_label = "cuda_batch"
+    elif cfg.use_native_phase2 and batch_native_available():
+        backend_label = "native_batch"
+    else:
+        backend_label = "python"
     print(f"[preview] {cfg.width}x{cfg.height}  backend={backend_label}  target_fps={target_fps}")
 
     fig, ax = plt.subplots(figsize=(5, 5))
@@ -129,17 +153,20 @@ def main(argv: list[str] | None = None) -> None:
                         help="Stop after this many frames (useful for benchmarks).")
     parser.add_argument("--no-native", action="store_true",
                         help="Force Python integrator even if the native extension is present.")
+    parser.add_argument("--cuda", action="store_true",
+                        help="Prefer CUDA batch kernel when libbh_rt_phase2_cuda.so is available.")
     args = parser.parse_args(argv)
 
-    use_native = not args.no_native
-    if use_native and not batch_native_available():
+    use_cuda = args.cuda
+    use_native = (not args.no_native) or use_cuda
+    if use_native and not batch_native_available() and not (use_cuda and cuda_batch_available()):
         print(
             "[preview] Native extension not available — using Python integrator. "
             "Build with BLACKHOLE_BUILD_NATIVE=1 for faster renders."
         )
         use_native = False
 
-    cfg = _build_config(args.preset, args.width, args.height, use_native)
+    cfg = _build_config(args.preset, args.width, args.height, use_native, use_cuda=use_cuda)
     run_preview(cfg, target_fps=args.fps, max_frames=args.max_frames)
 
 

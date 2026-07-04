@@ -83,3 +83,17 @@ jobs:
       - name: Verify shared library exists
         run: |
           test -f build/libbh_rt_phase2_cuda.so && echo "CUDA library built OK"
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: CUDA batch parity tests
+        run: uv run pytest tests/test_kernel_cuda_batch_parity.py -q --tb=short
+        env:
+          BLACKHOLE_CUDA_LIB: build/libbh_rt_phase2_cuda.so

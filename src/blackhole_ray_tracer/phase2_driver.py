@@ -60,6 +60,11 @@ def main() -> None:
         help="Use C extension per ray (_native_phase2); requires build",
     )
     parser.add_argument(
+        "--cuda",
+        action="store_true",
+        help="Use CUDA batch kernel when libbh_rt_phase2_cuda.so is available (implies --native)",
+    )
+    parser.add_argument(
         "--disk",
         action="store_true",
         help="Enable the thin equatorial accretion disk overlay (Python render path).",
@@ -74,27 +79,30 @@ def main() -> None:
         parser.print_help()
         return
 
+    use_native = args.native or args.cuda
+    use_cuda = args.cuda
+
     if args.preset is not None:
         cfg = render_config_from_preset(
-            args.preset, m=args.m, sky_mode=args.sky, use_native_phase2=args.native
+            args.preset, m=args.m, sky_mode=args.sky, use_native_phase2=use_native
         )
-        if args.disk:
-            cfg = Phase2RenderConfig(
-                width=cfg.width,
-                height=cfg.height,
-                m=cfg.m,
-                r_observer=cfg.r_observer,
-                observer_theta=cfg.observer_theta,
-                observer_phi=cfg.observer_phi,
-                fov_deg=cfg.fov_deg,
-                dlambda=cfg.dlambda,
-                max_steps=cfg.max_steps,
-                r_escape=cfg.r_escape,
-                r_horizon_epsilon=cfg.r_horizon_epsilon,
-                sky_mode=cfg.sky_mode,
-                use_native_phase2=cfg.use_native_phase2,
-                disk=DiskConfig(),
-            )
+        cfg = Phase2RenderConfig(
+            width=cfg.width,
+            height=cfg.height,
+            m=cfg.m,
+            r_observer=cfg.r_observer,
+            observer_theta=cfg.observer_theta,
+            observer_phi=cfg.observer_phi,
+            fov_deg=cfg.fov_deg,
+            dlambda=cfg.dlambda,
+            max_steps=cfg.max_steps,
+            r_escape=cfg.r_escape,
+            r_horizon_epsilon=cfg.r_horizon_epsilon,
+            sky_mode=cfg.sky_mode,
+            use_native_phase2=use_native,
+            use_cuda=use_cuda,
+            disk=DiskConfig() if args.disk else None,
+        )
     else:
         cfg = Phase2RenderConfig(
             width=args.width,
@@ -106,7 +114,8 @@ def main() -> None:
             max_steps=args.max_steps,
             r_escape=args.r_escape,
             sky_mode=args.sky,
-            use_native_phase2=args.native,
+            use_native_phase2=use_native,
+            use_cuda=use_cuda,
             disk=DiskConfig() if args.disk else None,
         )
     rgb, stats = render_schwarzschild_3d_image(cfg)

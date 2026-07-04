@@ -32,6 +32,7 @@ class KerrRenderConfig:
     r_horizon_epsilon: float = 1e-3
     sky_mode: str = "gradient"
     use_native_phase2: bool = False   # if True and a=0, use C batch path
+    use_cuda: bool = False            # if True and a=0, prefer CUDA batch when available
     disk: DiskConfig | None = None
     supersample: int = 1
 
@@ -51,6 +52,7 @@ class KerrRenderConfig:
             r_horizon_epsilon=self.r_horizon_epsilon,
             sky_mode=self.sky_mode,
             use_native_phase2=self.use_native_phase2,
+            use_cuda=self.use_cuda,
             disk=self.disk,
             supersample=self.supersample,
         )

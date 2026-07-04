@@ -101,18 +101,22 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 ---
 
-### Phase 4 — GPU port — partially scaffolded
+### Phase 4 — GPU port — substantially complete
 
 | Item | Goal | Status |
 |------|------|--------|
-| CUDA batch kernel | Preview-oriented throughput | `.cu` exists; build path via `kernel/cuda/Makefile` |
-| Python ctypes bridge | Load `libbh_rt_phase2_cuda.so` at runtime | `native_phase2_cuda.py` |
-| `setup.py` `nvcc` target | Pip-installable GPU path | Planned |
+| CUDA batch kernel | Preview-oriented throughput; `eq_r_cross` parity with CPU batch | Done: [`kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu`](../kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu), `make -C kernel/cuda cuda_batch` |
+| Python ctypes bridge | Load `libbh_rt_phase2_cuda.so` at runtime | Done: [`native_phase2_cuda.py`](../src/blackhole_ray_tracer/native_phase2_cuda.py) |
+| Render wiring | `--phase2-cuda` / `Phase2RenderConfig.use_cuda` → CUDA batch with CPU/Python fallback | Done: [`phase2_render.py`](../src/blackhole_ray_tracer/phase2_render.py), [`main.py`](../src/blackhole_ray_tracer/main.py), [`preview.py`](../src/blackhole_ray_tracer/preview.py) |
+| CUDA parity tests | CUDA vs CPU batch on small grids | Done: [`tests/test_kernel_cuda_batch_parity.py`](../tests/test_kernel_cuda_batch_parity.py) (skips without `nvcc`/GPU or when `SKIP_KERNEL_TESTS=1`) |
+| `setup.py` `nvcc` target | Pip-installable GPU path | Planned (use Makefile + `BLACKHOLE_CUDA_LIB` for now) |
 
 **Acceptance**
 
 - `make -C kernel/cuda cuda_batch ARCH=sm_75` produces `build/libbh_rt_phase2_cuda.so` (requires CUDA toolkit).
-- Optional CI step (`CUDA_AVAILABLE=1` repo variable) validates the build.
+- `uv run blackhole-ray-tracer --phase2-render --phase2-cuda --img-width 32 --img-height 32` completes when CUDA lib is present; falls back gracefully otherwise.
+- Optional CI step (`CUDA_AVAILABLE=1` repo variable) validates build + runs CUDA parity tests when a GPU is available.
+- Disk overlay works on CUDA batch path via `eq_r_cross`.
 
 ---
 
@@ -128,7 +132,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | `--phase1-step-e` | Step E PPM (`--ppm-out`, `--img-width`, `--img-height`, `--preset`) |
 | `--phase1-step-f` | Step F report |
 | `--phase2-report` | Phase 2 presets + benchmark |
-| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags; `--phase2-native` for C per-ray) |
+| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags; `--phase2-native` for C batch; `--phase2-cuda` for GPU batch) |
 
 ### `python -m blackhole_ray_tracer.phase1_driver`
 
@@ -180,3 +184,6 @@ Installation: typically `PYTHONPATH=src` when developing from checkout without r
 - [x] Anti-aliasing supersample (`Phase2RenderConfig.supersample`, `--aa` CLI flag).
 - [x] ML end-to-end tests (`tests/test_ml.py`): schema, dataset shapes, surrogate forward, gate routing.
 - [x] CUDA standalone build path (`kernel/cuda/Makefile`, `build/.gitkeep`, optional CI step).
+- [x] CUDA `eq_r_cross` output parity with CPU batch kernel.
+- [x] CUDA batch wired into `phase2_render.py` (`use_cuda`, `--phase2-cuda`, graceful fallback).
+- [x] CUDA batch parity tests (`tests/test_kernel_cuda_batch_parity.py`) + render smoke (`tests/test_phase2_cuda_render.py`).

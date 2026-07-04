@@ -65,6 +65,7 @@ def _load_cuda_lib() -> ctypes.CDLL | None:
             ctypes.POINTER(ctypes.c_int),     # out_steps_taken
             ctypes.POINTER(ctypes.c_double),  # out_termination_r
             ctypes.POINTER(ctypes.c_double),  # out_r_min
+            ctypes.POINTER(ctypes.c_double),  # out_eq_r_cross
         ]
         fn.restype = None
         _LIB = lib
@@ -96,7 +97,7 @@ def schwarzschild_phase2_batch_cuda(
     Returns
     -------
     dict with status(N,int32), steps_taken(N,int32),
-         termination_r(N,float64), r_min(N,float64)
+         termination_r(N,float64), r_min(N,float64), eq_r_cross(N,float64)
     """
     lib = _load_cuda_lib()
     if lib is None:
@@ -115,6 +116,7 @@ def schwarzschild_phase2_batch_cuda(
     out_steps   = np.empty(n, dtype=np.int32)
     out_term_r  = np.empty(n, dtype=np.float64)
     out_r_min   = np.empty(n, dtype=np.float64)
+    out_eq_r_cross = np.empty(n, dtype=np.float64)
 
     lib.bh_rt_schwarzschild_phase2_batch_trace_cuda(
         c_y0, ctypes.c_int(n),
@@ -125,10 +127,12 @@ def schwarzschild_phase2_batch_cuda(
         out_steps.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
         out_term_r.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         out_r_min.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        out_eq_r_cross.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
     )
     return {
         "status":        out_status,
         "steps_taken":   out_steps,
         "termination_r": out_term_r,
         "r_min":         out_r_min,
+        "eq_r_cross":    out_eq_r_cross,
     }

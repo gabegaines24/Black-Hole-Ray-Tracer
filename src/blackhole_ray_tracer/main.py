@@ -90,6 +90,12 @@ def main() -> None:
         help="With --phase2-render: trace each ray via C extension (_native_phase2); requires build.",
     )
     parser.add_argument(
+        "--phase2-cuda",
+        action="store_true",
+        help="With --phase2-render: use CUDA batch kernel when libbh_rt_phase2_cuda.so is built "
+        "(implies --phase2-native; set BLACKHOLE_CUDA_LIB or place .so in build/).",
+    )
+    parser.add_argument(
         "--phase2-disk",
         action="store_true",
         help="With --phase2-render: enable the thin equatorial accretion disk overlay.",
@@ -127,7 +133,8 @@ def main() -> None:
             )
             use_native = False
         preview_cfg = _build_config(
-            args.phase2_preset, args.img_width, args.img_height, use_native
+            args.phase2_preset, args.img_width, args.img_height, use_native,
+            use_cuda=getattr(args, "phase2_cuda", False),
         )
         run_preview(preview_cfg, target_fps=args.preview_fps, max_frames=args.preview_frames)
         return
@@ -135,30 +142,33 @@ def main() -> None:
         console.print(format_phase2_report())
         return
     if args.phase2_render:
+        use_native = args.phase2_native or args.phase2_cuda
+        use_cuda = args.phase2_cuda
         if args.phase2_preset is not None:
             cfg = render_config_from_preset(
                 args.phase2_preset,
                 m=1.0,
                 sky_mode="gradient",
-                use_native_phase2=args.phase2_native,
+                use_native_phase2=use_native,
             )
-            if args.phase2_disk:
-                cfg = Phase2RenderConfig(
-                    width=cfg.width,
-                    height=cfg.height,
-                    m=cfg.m,
-                    r_observer=cfg.r_observer,
-                    observer_theta=cfg.observer_theta,
-                    observer_phi=cfg.observer_phi,
-                    fov_deg=cfg.fov_deg,
-                    dlambda=cfg.dlambda,
-                    max_steps=cfg.max_steps,
-                    r_escape=cfg.r_escape,
-                    r_horizon_epsilon=cfg.r_horizon_epsilon,
-                    sky_mode=cfg.sky_mode,
-                    use_native_phase2=cfg.use_native_phase2,
-                    disk=DiskConfig(),
-                )
+            cfg = Phase2RenderConfig(
+                width=cfg.width,
+                height=cfg.height,
+                m=cfg.m,
+                r_observer=cfg.r_observer,
+                observer_theta=cfg.observer_theta,
+                observer_phi=cfg.observer_phi,
+                fov_deg=cfg.fov_deg,
+                dlambda=cfg.dlambda,
+                max_steps=cfg.max_steps,
+                r_escape=cfg.r_escape,
+                r_horizon_epsilon=cfg.r_horizon_epsilon,
+                sky_mode=cfg.sky_mode,
+                use_native_phase2=use_native,
+                use_cuda=use_cuda,
+                disk=DiskConfig() if args.phase2_disk else None,
+                supersample=getattr(args, "supersample", 1),
+            )
         else:
             cfg = Phase2RenderConfig(
                 width=args.img_width,
@@ -166,7 +176,8 @@ def main() -> None:
                 m=1.0,
                 dlambda=0.06,
                 max_steps=8000,
-                use_native_phase2=args.phase2_native,
+                use_native_phase2=use_native,
+                use_cuda=use_cuda,
                 disk=DiskConfig() if getattr(args, "phase2_disk", False) else None,
                 supersample=getattr(args, "supersample", 1),
             )
