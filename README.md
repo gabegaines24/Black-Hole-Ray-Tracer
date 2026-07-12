@@ -51,7 +51,19 @@ uv run blackhole-ray-tracer --phase2-render --phase2-ml --img-width 32 --phase2-
 
 Phase 3 Kerr renders: `uv run python -m blackhole_ray_tracer.phase3_driver --render --spin 0.5 --native`
 
-Optional groups: `uv sync --group viz` (matplotlib preview), `uv sync --group ml` (PyTorch for future training).
+Optional groups: `uv sync --group viz` (matplotlib preview + Streamlit dashboard), `uv sync --group ml` (PyTorch for future training).
+
+### Preview and dashboard
+
+```bash
+uv sync --group viz
+uv run python -m blackhole_ray_tracer.preview --preset fast --disk --backend auto
+uv run blackhole-ray-tracer --phase2-preview --phase2-preset fast --phase2-disk
+uv run blackhole-ray-tracer-dashboard
+# or: uv run streamlit run src/blackhole_ray_tracer/streamlit_app.py
+```
+
+Preview flags: `--backend auto|python|native|cuda|ml`, `--disk`, `--sky gradient|flat`, `--r-observer`, `--fov`, `--aa`.
 
 ## Milestones (current)
 

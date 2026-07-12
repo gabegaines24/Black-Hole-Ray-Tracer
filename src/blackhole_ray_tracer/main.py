@@ -17,7 +17,6 @@ from .phase1_tuning import PRESETS, format_step_f_report
 from .phase2_render import render_schwarzschild_3d_image
 from .phase2_report import format_phase2_report, render_config_from_preset
 from .phase2_types import DiskConfig, Phase2RenderConfig
-from .native_phase2 import batch_native_available
 
 
 def main() -> None:
@@ -135,16 +134,25 @@ def main() -> None:
 
     console = Console()
     if args.phase2_preview:
-        from .preview import run_preview, _build_config  # local import to avoid matplotlib at startup
-        use_native = not getattr(args, "no_native", False)
-        if use_native and not batch_native_available():
-            console.print(
-                "[yellow]Native extension not available — using Python integrator.[/yellow]"
-            )
-            use_native = False
-        preview_cfg = _build_config(
-            args.phase2_preset, args.img_width, args.img_height, use_native
+        from .preview import run_preview
+        from .preview_config import PreviewBuildArgs, backend_from_phase2_flags, build_preview_config
+
+        build_args = PreviewBuildArgs(
+            preset=args.phase2_preset,
+            width=args.img_width,
+            height=args.img_height,
+            backend=backend_from_phase2_flags(
+                native=args.phase2_native,
+                cuda=args.phase2_cuda,
+                ml=args.phase2_ml,
+            ),
+            disk=args.phase2_disk,
+            ml_model_path=args.ml_model_path,
+            supersample=args.supersample,
         )
+        preview_cfg, warnings = build_preview_config(build_args)
+        for msg in warnings:
+            console.print(f"[yellow]{msg}[/yellow]")
         run_preview(preview_cfg, target_fps=args.preview_fps, max_frames=args.preview_frames)
         return
     if args.phase2_report:
