@@ -4,25 +4,40 @@ Falls back to CPU batch automatically if the CUDA shared library is not found.
 
 The CUDA library is NOT built by default (requires nvcc + GPU).  Build with:
 
-    nvcc -O2 -arch=sm_75 -Ikernel/include --compiler-options -fPIC -shared \\
-         -o build/libbh_rt_phase2_cuda.so \\
-         kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu
+    BLACKHOLE_BUILD_CUDA=1 uv sync          # pip-installable path (setup.py)
+    make -C kernel/cuda cuda_batch            # standalone Makefile path
 
-Then set BLACKHOLE_CUDA_LIB=/path/to/libbh_rt_phase2_cuda.so, or place the
-file in the package root.
+Then set BLACKHOLE_CUDA_LIB=/path/to/libbh_rt_phase2_cuda.so, or rely on the
+library installed next to this module after ``BLACKHOLE_BUILD_CUDA=1 uv sync``.
 """
 
 from __future__ import annotations
 
 import ctypes
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+__all__ = [
+    "cuda_batch_available",
+    "schwarzschild_phase2_batch_cuda",
+]
+
 _LIB: ctypes.CDLL | None = None
 _TRIED = False
+_PKG_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _PKG_DIR.parents[1]
+
+
+def _cuda_lib_names() -> tuple[str, ...]:
+    if sys.platform.startswith("win"):
+        return ("libbh_rt_phase2_cuda.dll", "bh_rt_phase2_cuda.dll")
+    if sys.platform == "darwin":
+        return ("libbh_rt_phase2_cuda.dylib",)
+    return ("libbh_rt_phase2_cuda.so",)
 
 
 def _find_cuda_lib() -> Path | None:
@@ -30,12 +45,17 @@ def _find_cuda_lib() -> Path | None:
     if env:
         p = Path(env)
         return p if p.exists() else None
-    # Search standard locations relative to the package
-    candidates = [
-        Path(__file__).resolve().parents[2] / "build" / "libbh_rt_phase2_cuda.so",
-        Path(__file__).resolve().parents[2] / "build" / "libbh_rt_phase2_cuda.dll",
-        Path(__file__).resolve().parents[2] / "libbh_rt_phase2_cuda.so",
-    ]
+
+    candidates: list[Path] = []
+    for name in _cuda_lib_names():
+        candidates.append(_PKG_DIR / name)
+    candidates.extend(
+        [
+            _REPO_ROOT / "build" / "libbh_rt_phase2_cuda.so",
+            _REPO_ROOT / "build" / "libbh_rt_phase2_cuda.dll",
+            _REPO_ROOT / "libbh_rt_phase2_cuda.so",
+        ]
+    )
     for c in candidates:
         if c.exists():
             return c

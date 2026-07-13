@@ -101,17 +101,19 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 ---
 
-### Phase 4 — GPU port — partially scaffolded
+### Phase 4 — GPU port — substantially complete (runtime requires GPU)
 
 | Item | Goal | Status |
 |------|------|--------|
-| CUDA batch kernel | Preview-oriented throughput | `.cu` exists; build path via `kernel/cuda/Makefile` |
+| CUDA batch kernel | Preview-oriented throughput | `.cu` exists; `make -C kernel/cuda cuda_batch` or `BLACKHOLE_BUILD_CUDA=1 uv sync` |
 | Python ctypes bridge | Load `libbh_rt_phase2_cuda.so` at runtime | `native_phase2_cuda.py` |
-| `setup.py` `nvcc` target | Pip-installable GPU path | Planned |
+| `setup.py` `nvcc` target | Pip-installable GPU path | Done: `build_cuda` command installs `.so` next to package |
+| Phase 2 render CUDA path | GPU batch in image loop | `use_cuda_phase2`, `--phase2-cuda` / `phase2_driver --cuda` |
 
 **Acceptance**
 
 - `make -C kernel/cuda cuda_batch ARCH=sm_75` produces `build/libbh_rt_phase2_cuda.so` (requires CUDA toolkit).
+- `BLACKHOLE_BUILD_CUDA=1 uv sync` runs `build_cuda` when `nvcc` is on `PATH`.
 - Optional CI step (`CUDA_AVAILABLE=1` repo variable) validates the build.
 
 ---
@@ -128,7 +130,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | `--phase1-step-e` | Step E PPM (`--ppm-out`, `--img-width`, `--img-height`, `--preset`) |
 | `--phase1-step-f` | Step F report |
 | `--phase2-report` | Phase 2 presets + benchmark |
-| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags; `--phase2-native` for C per-ray) |
+| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags; `--phase2-native` for C per-ray; `--phase2-cuda` for GPU batch) |
 
 ### `python -m blackhole_ray_tracer.phase1_driver`
 

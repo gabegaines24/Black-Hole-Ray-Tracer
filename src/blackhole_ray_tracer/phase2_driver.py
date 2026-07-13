@@ -60,6 +60,11 @@ def main() -> None:
         help="Use C extension per ray (_native_phase2); requires build",
     )
     parser.add_argument(
+        "--cuda",
+        action="store_true",
+        help="Use CUDA batch kernel; requires BLACKHOLE_BUILD_CUDA=1 build or BLACKHOLE_CUDA_LIB",
+    )
+    parser.add_argument(
         "--disk",
         action="store_true",
         help="Enable the thin equatorial accretion disk overlay (Python render path).",
@@ -76,7 +81,11 @@ def main() -> None:
 
     if args.preset is not None:
         cfg = render_config_from_preset(
-            args.preset, m=args.m, sky_mode=args.sky, use_native_phase2=args.native
+            args.preset,
+            m=args.m,
+            sky_mode=args.sky,
+            use_native_phase2=args.native,
+            use_cuda_phase2=args.cuda,
         )
         if args.disk:
             cfg = Phase2RenderConfig(
@@ -93,6 +102,7 @@ def main() -> None:
                 r_horizon_epsilon=cfg.r_horizon_epsilon,
                 sky_mode=cfg.sky_mode,
                 use_native_phase2=cfg.use_native_phase2,
+                use_cuda_phase2=cfg.use_cuda_phase2,
                 disk=DiskConfig(),
             )
     else:
@@ -107,6 +117,7 @@ def main() -> None:
             r_escape=args.r_escape,
             sky_mode=args.sky,
             use_native_phase2=args.native,
+            use_cuda_phase2=args.cuda,
             disk=DiskConfig() if args.disk else None,
         )
     rgb, stats = render_schwarzschild_3d_image(cfg)
