@@ -9,6 +9,7 @@ dependencies = ["numpy>=2.2.0", "rich>=14.0.0"]
 
 [project.scripts]
 blackhole-ray-tracer = "blackhole_ray_tracer.main:main"
+kerr-render = "blackhole_ray_tracer.phase3_driver:main"
 
 [dependency-groups]
 dev = ["pytest>=8.3.0", "ruff>=0.11.0", "mypy>=1.15.0"]
@@ -22,10 +23,3 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src", "."]
 include = ["blackhole_ray_tracer*", "ml*"]
-
-[tool.setuptools.package-data]
-ml = ["models/*.npz"]
-
-[[tool.mypy.overrides]]
-module = ["matplotlib", "matplotlib.*"]
-ignore_missing_imports = true

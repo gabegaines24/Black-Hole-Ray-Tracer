@@ -17,8 +17,7 @@
 
 #include <math.h>
 #include <stddef.h>
-#include <stdint.h>
-#include <cuda_runtime.h>
+
 /* Status constants (mirror bh_rt_status.h for CUDA compilation). */
 #define BH_RT_STATUS_CAPTURED        0
 #define BH_RT_STATUS_ESCAPED         1
@@ -45,7 +44,7 @@ __device__ static double d_christoffel(int mu, int a, int b,
   if (mu == 0) { if (a == 0 && b == 1) return m_r2f; return 0.0; }
   if (mu == 1) {
     if (a == 0 && b == 0) return m * ff / r2;
-    if (a == 1 && b == 1) return -m / (r2 * ff);
+    if (a == 1 && b == 1) return m / (r2 * ff);
     if (a == 2 && b == 2) return -r * ff;
     if (a == 3 && b == 3) return -r * ff * s2;
     return 0.0;
@@ -111,23 +110,6 @@ __device__ static void d_rk4_step(double lam, double *y, double dlambda, double 
     y[i] += (h / 6.0) * (k1[i] + 2.0*k2[i] + 2.0*k3[i] + k4[i]);
 }
 
-__device__ static void d_try_disk_cross(
-    int *found, double *r_cross, double *vt_cross, double *vph_cross,
-    double th0, double r0, double vt0, double vph0,
-    double th1, double r1, double vt1, double vph1)
-{
-  if (*found) return;
-  const double half_pi = 0.5 * 3.14159265358979323846;
-  double d0 = th0 - half_pi;
-  double d1 = th1 - half_pi;
-  if (d0 * d1 >= 0.0) return;
-  double alpha = fabs(d0) / (fabs(d0) + fabs(d1) + 1e-30);
-  *found = 1;
-  *r_cross = r0 * (1.0 - alpha) + r1 * alpha;
-  *vt_cross = vt0 * (1.0 - alpha) + vt1 * alpha;
-  *vph_cross = vph0 * (1.0 - alpha) + vph1 * alpha;
-}
-
 /* ── kernel ────────────────────────────────────────────────────────────────── */
 
 extern "C" __global__ void bh_rt_phase2_batch_kernel(
@@ -141,11 +123,7 @@ extern "C" __global__ void bh_rt_phase2_batch_kernel(
     int    *out_status,
     int    *out_steps_taken,
     double *out_termination_r,
-    double *out_r_min,
-    int    *out_disk_hit,
-    double *out_disk_r_cross,
-    double *out_disk_vt,
-    double *out_disk_vph)
+    double *out_r_min)
 {
   int ray = blockIdx.x * blockDim.x + threadIdx.x;
   if (ray >= n) return;
@@ -164,16 +142,11 @@ extern "C" __global__ void bh_rt_phase2_batch_kernel(
   int steps_taken = 0;
   int broke = 0;
 
-  int disk_found = 0;
-  double disk_r_cross = NAN;
-  double disk_vt = NAN;
-  double disk_vph = NAN;
-
   for (int step_idx = 0; step_idx < max_steps; ++step_idx) {
     double r = y[1];
     if (!d_all_finite(y)) {
       status = BH_RT_STATUS_NUMERICAL_ERROR;
-      termination_r = NAN; steps_taken = step_idx; broke = 1; break;
+      termination_r = r; steps_taken = step_idx; broke = 1; break;
     }
     if (r < r_cap) {
       status = BH_RT_STATUS_CAPTURED;
@@ -184,19 +157,8 @@ extern "C" __global__ void bh_rt_phase2_batch_kernel(
       termination_r = r; steps_taken = step_idx; broke = 1; break;
     }
     if (isfinite(r)) r_min_val = fmin(r_min_val, r);
-
-    double th0 = y[2];
-    double r0 = y[1];
-    double vt0 = y[4];
-    double vph0 = y[7];
     d_rk4_step(lam, y, dlambda, m);
     if ((step_idx % 4) == 0) d_renormalize(y, m);
-    if (d_all_finite(y) && y[1] >= r_cap) {
-      d_try_disk_cross(
-          &disk_found, &disk_r_cross, &disk_vt, &disk_vph,
-          th0, r0, vt0, vph0,
-          y[2], y[1], y[4], y[7]);
-    }
     lam += dlambda;
     steps_taken = step_idx + 1;
   }
@@ -213,138 +175,48 @@ extern "C" __global__ void bh_rt_phase2_batch_kernel(
   out_steps_taken[ray]   = steps_taken;
   out_termination_r[ray] = termination_r;
   out_r_min[ray]         = r_min_val;
-  out_disk_hit[ray]      = disk_found;
-  out_disk_r_cross[ray]  = disk_r_cross;
-  out_disk_vt[ray]       = disk_vt;
-  out_disk_vph[ray]      = disk_vph;
 }
 
 /* ── host-side launcher (C linkage, callable from Python ctypes or bridge) ── */
 
-extern "C" int32_t bh_rt_schwarzschild_phase2_batch_trace_cuda(
+extern "C" void bh_rt_schwarzschild_phase2_batch_trace_cuda(
     const double *h_y0,
-    int32_t n,
+    int n,
     double m,
     double dlambda,
-    int32_t max_steps,
+    int max_steps,
     double r_escape,
     double r_horizon_epsilon,
-    int32_t *h_status,
-    int32_t *h_steps,
+    int    *h_status,
+    int    *h_steps,
     double *h_term_r,
-    double *h_r_min,
-    int32_t *h_disk_hit,
-    double *h_disk_r_cross,
-    double *h_disk_vt,
-    double *h_disk_vph)
+    double *h_r_min)
 {
-  if (n < 0) return static_cast<int32_t>(cudaErrorInvalidValue);
-  if (n == 0) return static_cast<int32_t>(cudaSuccess);
-  if (h_y0 == nullptr || h_status == nullptr || h_steps == nullptr ||
-      h_term_r == nullptr || h_r_min == nullptr || h_disk_hit == nullptr ||
-      h_disk_r_cross == nullptr || h_disk_vt == nullptr || h_disk_vph == nullptr) {
-    return static_cast<int32_t>(cudaErrorInvalidValue);
-  }
+  size_t y0_bytes     = (size_t)n * N_STATE * sizeof(double);
+  size_t int_bytes    = (size_t)n * sizeof(int);
+  size_t double_bytes = (size_t)n * sizeof(double);
 
-  const size_t y0_bytes = static_cast<size_t>(n) * N_STATE * sizeof(double);
-  const size_t int_bytes = static_cast<size_t>(n) * sizeof(int32_t);
-  const size_t double_bytes = static_cast<size_t>(n) * sizeof(double);
-  double *d_y0 = nullptr;
-  int32_t *d_status = nullptr;
-  int32_t *d_steps = nullptr;
-  int32_t *d_disk_hit = nullptr;
-  double *d_term_r = nullptr;
-  double *d_r_min = nullptr;
-  double *d_disk_r = nullptr;
-  double *d_disk_vt = nullptr;
-  double *d_disk_vph = nullptr;
-  cudaError_t status = cudaSuccess;
-  cudaError_t free_status = cudaSuccess;
-  int32_t rc = static_cast<int32_t>(cudaSuccess);
+  double *d_y0; int *d_status, *d_steps; double *d_term_r, *d_r_min;
+  cudaMalloc(&d_y0,     y0_bytes);
+  cudaMalloc(&d_status, int_bytes);
+  cudaMalloc(&d_steps,  int_bytes);
+  cudaMalloc(&d_term_r, double_bytes);
+  cudaMalloc(&d_r_min,  double_bytes);
+
+  cudaMemcpy(d_y0, h_y0, y0_bytes, cudaMemcpyHostToDevice);
+
   int block = 128;
-  int grid = (n + block - 1) / block;
-
-#define BH_CUDA_CHECK(call) \
-  do { \
-    status = (call); \
-    if (status != cudaSuccess) { \
-      rc = static_cast<int32_t>(status); \
-      goto cleanup; \
-    } \
-  } while (0)
-
-  BH_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_y0), y0_bytes));
-  BH_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_status), int_bytes));
-  BH_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_steps), int_bytes));
-  BH_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_term_r), double_bytes));
-  BH_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_r_min), double_bytes));
-  BH_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_disk_hit), int_bytes));
-  BH_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_disk_r), double_bytes));
-  BH_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_disk_vt), double_bytes));
-  BH_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_disk_vph), double_bytes));
-  BH_CUDA_CHECK(cudaMemcpy(d_y0, h_y0, y0_bytes, cudaMemcpyHostToDevice));
-
+  int grid  = (n + block - 1) / block;
   bh_rt_phase2_batch_kernel<<<grid, block>>>(
       d_y0, n, m, dlambda, max_steps, r_escape, r_horizon_epsilon,
-      d_status, d_steps, d_term_r, d_r_min,
-      d_disk_hit, d_disk_r, d_disk_vt, d_disk_vph);
-  BH_CUDA_CHECK(cudaGetLastError());
-  BH_CUDA_CHECK(cudaDeviceSynchronize());
-  BH_CUDA_CHECK(cudaMemcpy(h_status, d_status, int_bytes, cudaMemcpyDeviceToHost));
-  BH_CUDA_CHECK(cudaMemcpy(h_steps, d_steps, int_bytes, cudaMemcpyDeviceToHost));
-  BH_CUDA_CHECK(cudaMemcpy(h_term_r, d_term_r, double_bytes, cudaMemcpyDeviceToHost));
-  BH_CUDA_CHECK(cudaMemcpy(h_r_min, d_r_min, double_bytes, cudaMemcpyDeviceToHost));
-  BH_CUDA_CHECK(cudaMemcpy(h_disk_hit, d_disk_hit, int_bytes, cudaMemcpyDeviceToHost));
-  BH_CUDA_CHECK(cudaMemcpy(h_disk_r_cross, d_disk_r, double_bytes, cudaMemcpyDeviceToHost));
-  BH_CUDA_CHECK(cudaMemcpy(h_disk_vt, d_disk_vt, double_bytes, cudaMemcpyDeviceToHost));
-  BH_CUDA_CHECK(cudaMemcpy(h_disk_vph, d_disk_vph, double_bytes, cudaMemcpyDeviceToHost));
+      d_status, d_steps, d_term_r, d_r_min);
+  cudaDeviceSynchronize();
 
-cleanup:
-  if (d_y0 != nullptr) {
-    free_status = cudaFree(d_y0);
-    if (rc == static_cast<int32_t>(cudaSuccess) && free_status != cudaSuccess)
-      rc = static_cast<int32_t>(free_status);
-  }
-  if (d_status != nullptr) {
-    free_status = cudaFree(d_status);
-    if (rc == static_cast<int32_t>(cudaSuccess) && free_status != cudaSuccess)
-      rc = static_cast<int32_t>(free_status);
-  }
-  if (d_steps != nullptr) {
-    free_status = cudaFree(d_steps);
-    if (rc == static_cast<int32_t>(cudaSuccess) && free_status != cudaSuccess)
-      rc = static_cast<int32_t>(free_status);
-  }
-  if (d_term_r != nullptr) {
-    free_status = cudaFree(d_term_r);
-    if (rc == static_cast<int32_t>(cudaSuccess) && free_status != cudaSuccess)
-      rc = static_cast<int32_t>(free_status);
-  }
-  if (d_r_min != nullptr) {
-    free_status = cudaFree(d_r_min);
-    if (rc == static_cast<int32_t>(cudaSuccess) && free_status != cudaSuccess)
-      rc = static_cast<int32_t>(free_status);
-  }
-  if (d_disk_hit != nullptr) {
-    free_status = cudaFree(d_disk_hit);
-    if (rc == static_cast<int32_t>(cudaSuccess) && free_status != cudaSuccess)
-      rc = static_cast<int32_t>(free_status);
-  }
-  if (d_disk_r != nullptr) {
-    free_status = cudaFree(d_disk_r);
-    if (rc == static_cast<int32_t>(cudaSuccess) && free_status != cudaSuccess)
-      rc = static_cast<int32_t>(free_status);
-  }
-  if (d_disk_vt != nullptr) {
-    free_status = cudaFree(d_disk_vt);
-    if (rc == static_cast<int32_t>(cudaSuccess) && free_status != cudaSuccess)
-      rc = static_cast<int32_t>(free_status);
-  }
-  if (d_disk_vph != nullptr) {
-    free_status = cudaFree(d_disk_vph);
-    if (rc == static_cast<int32_t>(cudaSuccess) && free_status != cudaSuccess)
-      rc = static_cast<int32_t>(free_status);
-  }
-#undef BH_CUDA_CHECK
-  return rc;
+  cudaMemcpy(h_status, d_status, int_bytes,    cudaMemcpyDeviceToHost);
+  cudaMemcpy(h_steps,  d_steps,  int_bytes,    cudaMemcpyDeviceToHost);
+  cudaMemcpy(h_term_r, d_term_r, double_bytes, cudaMemcpyDeviceToHost);
+  cudaMemcpy(h_r_min,  d_r_min,  double_bytes, cudaMemcpyDeviceToHost);
+
+  cudaFree(d_y0); cudaFree(d_status); cudaFree(d_steps);
+  cudaFree(d_term_r); cudaFree(d_r_min);
 }

@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import math
 
+__all__ = ["render_schwarzschild_3d_image"]
+
 import numpy as np
-from ml.schema import STATUS_CAPTURED, STATUS_ESCAPED, STATUS_MAX_STEPS, STATUS_NUMERIC
 
 from .phase1 import RayStatus
 from .phase2_batch import build_camera_y0
 from .phase2_camera import make_camera_from_config, initial_position_observer, static_observer_null_direction
 from .phase2_disk import (
-    detect_equatorial_crossing_state,
+    detect_equatorial_crossing,
     disk_color_at_r,
     disk_hit_from_equatorial_crossing,
 )
 from .phase2_geodesic import trace_null_geodesic_3d
-from .phase2_types import Phase2RenderConfig, RenderStats
+from .phase2_types import Phase2RenderConfig
 from .native_phase2 import (
     batch_native_available,
     native_phase2_available,
@@ -26,18 +27,6 @@ from .native_phase2 import (
     schwarzschild_phase2_trace_native,
 )
 from .native_phase2_cuda import cuda_batch_available, schwarzschild_phase2_batch_cuda
-
-
-def _ray_status_from_ml_gate(status: int) -> RayStatus:
-    if status == STATUS_CAPTURED:
-        return RayStatus.CAPTURED
-    if status == STATUS_ESCAPED:
-        return RayStatus.ESCAPED
-    if status == STATUS_MAX_STEPS:
-        return RayStatus.MAX_STEPS
-    if status == STATUS_NUMERIC:
-        return RayStatus.NUMERICAL_ERROR
-    return RayStatus.MAX_STEPS
 
 
 def _sky_rgb_from_direction(
@@ -53,69 +42,34 @@ def _sky_rgb_from_direction(
     return (min(r, 1.0), min(g, 1.0), min(b, 1.0))
 
 
-def _color_batch_pixels(
-    cfg: Phase2RenderConfig,
-    result: dict,
-    statuses: list[RayStatus],
-    rgb: np.ndarray,
-) -> tuple[int, int, int]:
-    """Color an image from a batch trace result dict. Returns (n_cap, n_esc, n_other)."""
-    h, w = cfg.height, cfg.width
-    disk = cfg.disk
-    n_cap = n_esc = n_other = 0
-    for j in range(h):
-        for i in range(w):
-            idx = j * w + i
-            sx = 2.0 * (i + 0.5) / w - 1.0
-            sy = 1.0 - 2.0 * (j + 0.5) / h
-            status = statuses[idx]
-            disk_drawn = False
-            if (
-                disk is not None
-                and status != RayStatus.CAPTURED
-                and int(result["disk_hit"][idx]) != 0
-            ):
-                r_cross = float(result["disk_r_cross"][idx])
-                dh = disk_hit_from_equatorial_crossing(
-                    r_cross,
-                    disk,
-                    cfg.m,
-                    vt=float(result["disk_vt"][idx]),
-                    vph=float(result["disk_vph"][idx]),
-                )
-                if dh.hit:
-                    dr, dg, db = disk_color_at_r(r_cross, dh.z_factor, disk)
-                    rgb[j, i, 0] = dr
-                    rgb[j, i, 1] = dg
-                    rgb[j, i, 2] = db
-                    n_esc += 1
-                    disk_drawn = True
-
-            if not disk_drawn:
-                if status == RayStatus.CAPTURED:
-                    rgb[j, i, :] = 0.0
-                    n_cap += 1
-                elif status == RayStatus.ESCAPED:
-                    br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
-                    rgb[j, i, 0] = br
-                    rgb[j, i, 1] = bg
-                    rgb[j, i, 2] = bb
-                    n_esc += 1
-                else:
-                    rgb[j, i, :] = (0.12, 0.1, 0.15)
-                    n_other += 1
-    return n_cap, n_esc, n_other
-
-
 def render_schwarzschild_3d_image(
     cfg: Phase2RenderConfig,
-) -> tuple[np.ndarray, RenderStats]:
+) -> tuple[np.ndarray, dict[str, float]]:
     """Return RGB float32 (H, W, 3) in [0,1] and simple stats dict.
 
     When ``cfg.use_native_phase2`` is True the native C batch kernel is used
     (one call for the entire pixel grid), replacing the Python ray-by-ray loop.
+
+    When ``cfg.supersample > 1`` renders at ``(W*s, H*s)`` then box-averages
+    down to ``(W, H)`` for anti-aliasing.
     """
+    s = max(getattr(cfg, "supersample", 1), 1)
+    if s > 1:
+        import dataclasses
+        hi_cfg = dataclasses.replace(cfg, width=cfg.width * s, height=cfg.height * s, supersample=1)
+        rgb_full, stats = render_schwarzschild_3d_image(hi_cfg)
+        rgb = rgb_full.reshape(cfg.height, s, cfg.width, s, 3).mean(axis=(1, 3)).astype(np.float32)
+        stats["supersample"] = s
+        return rgb, stats
+
     h, w = cfg.height, cfg.width
+
+    if cfg.use_cuda_phase2 and not cuda_batch_available():
+        raise RuntimeError(
+            "Phase2RenderConfig.use_cuda_phase2 is True but the CUDA batch library "
+            "is not available. Build with BLACKHOLE_BUILD_CUDA=1 uv sync (requires nvcc), "
+            "make -C kernel/cuda cuda_batch, or set BLACKHOLE_CUDA_LIB=<path>."
+        )
 
     if cfg.use_native_phase2 and not native_phase2_available():
         raise RuntimeError(
@@ -126,41 +80,85 @@ def render_schwarzschild_3d_image(
 
     rgb = np.zeros((h, w, 3), dtype=np.float32)
     n_cap = n_esc = n_other = 0
-    n_surrogate = 0
     backend = "python"
 
-    use_cuda = cfg.use_native_phase2 and cfg.use_cuda_batch and cuda_batch_available()
-    use_batch = cfg.use_native_phase2 and batch_native_available() and not use_cuda
-    use_ml_gate = cfg.ml_gate_model_path is not None
-    if use_ml_gate and cfg.use_native_phase2:
-        raise ValueError("ML gate and native Phase 2 backend cannot be enabled together.")
+    use_cuda_batch = cfg.use_cuda_phase2 and cuda_batch_available()
+    use_cpu_batch = cfg.use_native_phase2 and batch_native_available() and not use_cuda_batch
 
-    if use_cuda or use_batch:
-        backend = "cuda_batch" if use_cuda else "native_batch"
-        y0 = build_camera_y0(cfg)
-        batch_fn = schwarzschild_phase2_batch_cuda if use_cuda else schwarzschild_phase2_batch_native
-        result = batch_fn(
-            y0,
-            m=cfg.m,
-            dlambda=cfg.dlambda,
-            max_steps=cfg.max_steps,
-            r_escape=cfg.r_escape,
-            r_horizon_epsilon=cfg.r_horizon_epsilon,
-        )
+    if use_cuda_batch or use_cpu_batch:
+        # ── batched path (CUDA or native CPU) ────────────────────────────────
+        backend = "cuda_batch" if use_cuda_batch else "native_batch"
+        y0 = build_camera_y0(cfg)   # (N, 8)
+        if use_cuda_batch:
+            result = schwarzschild_phase2_batch_cuda(
+                y0,
+                m=cfg.m,
+                dlambda=cfg.dlambda,
+                max_steps=cfg.max_steps,
+                r_escape=cfg.r_escape,
+                r_horizon_epsilon=cfg.r_horizon_epsilon,
+            )
+        else:
+            result = schwarzschild_phase2_batch_native(
+                y0,
+                m=cfg.m,
+                dlambda=cfg.dlambda,
+                max_steps=cfg.max_steps,
+                r_escape=cfg.r_escape,
+                r_horizon_epsilon=cfg.r_horizon_epsilon,
+            )
         statuses = ray_status_array_from_native(result["status"])
-        n_cap, n_esc, n_other = _color_batch_pixels(cfg, result, statuses, rgb)
+        eq_r_cross_arr: np.ndarray | None = result.get("eq_r_cross")
+
+        disk = cfg.disk
+        for j in range(h):
+            for i in range(w):
+                idx = j * w + i
+                sx = 2.0 * (i + 0.5) / w - 1.0
+                sy = 1.0 - 2.0 * (j + 0.5) / h
+                status = statuses[idx]
+
+                disk_drawn = False
+                if (
+                    disk is not None
+                    and status != RayStatus.CAPTURED
+                    and eq_r_cross_arr is not None
+                ):
+                    r_cross = float(eq_r_cross_arr[idx])
+                    if math.isfinite(r_cross):
+                        y0_ray = y0[idx]
+                        dh = disk_hit_from_equatorial_crossing(
+                            r_cross, disk, cfg.m,
+                            vt=float(y0_ray[4]),
+                            vph=float(y0_ray[7]),
+                        )
+                        if dh.hit:
+                            dr, dg, db = disk_color_at_r(r_cross, dh.z_factor, disk)
+                            rgb[j, i, 0] = dr
+                            rgb[j, i, 1] = dg
+                            rgb[j, i, 2] = db
+                            n_esc += 1
+                            disk_drawn = True
+
+                if not disk_drawn:
+                    if status == RayStatus.CAPTURED:
+                        rgb[j, i, :] = 0.0
+                        n_cap += 1
+                    elif status == RayStatus.ESCAPED:
+                        br, bg, bb = _sky_rgb_from_direction(sx, sy, cfg.sky_mode)
+                        rgb[j, i, 0] = br
+                        rgb[j, i, 1] = bg
+                        rgb[j, i, 2] = bb
+                        n_esc += 1
+                    else:
+                        rgb[j, i, :] = (0.12, 0.1, 0.15)
+                        n_other += 1
 
     else:
         # ── Python (or single-ray native) fallback ───────────────────────────
         use_native = cfg.use_native_phase2  # single-ray native, native_phase2 checked above
         if use_native:
             backend = "native"
-        ml_gate = None
-        if use_ml_gate:
-            from ml.runtime_gate import RuntimeGate
-
-            ml_gate = RuntimeGate.from_model_path(str(cfg.ml_gate_model_path))
-            backend = "ml_gate" if ml_gate.surrogate_loaded else "ml_gate_fallback"
 
         cam = make_camera_from_config(
             m=cfg.m,
@@ -181,25 +179,7 @@ def render_schwarzschild_3d_image(
                 sx = 2.0 * (i + 0.5) / w - 1.0
                 sy = 1.0 - 2.0 * (j + 0.5) / h
                 v0 = static_observer_null_direction(cam, sx, sy)
-                samples_theta: list[float] = []
-                samples_r: list[float] = []
-                samples_vt: list[float] = []
-                samples_vphi: list[float] = []
-                if ml_gate is not None:
-                    y0_ray = np.concatenate([x0, v0])
-                    gate_result = ml_gate.infer_or_integrate(
-                        y0_ray,
-                        m=cfg.m,
-                        dlambda=cfg.dlambda,
-                        max_steps=cfg.max_steps,
-                        r_escape=cfg.r_escape,
-                        r_horizon_epsilon=cfg.r_horizon_epsilon,
-                    )
-                    status = _ray_status_from_ml_gate(gate_result.status)
-                    if gate_result.from_surrogate:
-                        n_surrogate += 1
-
-                elif use_native:
+                if use_native:
                     y0_ray = np.concatenate([x0, v0])
                     nt = schwarzschild_phase2_trace_native(
                         y0_ray,
@@ -210,7 +190,8 @@ def render_schwarzschild_3d_image(
                         r_horizon_epsilon=cfg.r_horizon_epsilon,
                     )
                     status = ray_status_from_native_phase2(nt)
-
+                    samples_theta: list[float] = []
+                    samples_r: list[float] = []
                 else:
                     res = trace_null_geodesic_3d(
                         x0, v0,
@@ -225,32 +206,20 @@ def render_schwarzschild_3d_image(
                     if need_samples:
                         samples_theta = res.theta_samples
                         samples_r = res.r_samples
-                        samples_vt = res.vt_samples
-                        samples_vphi = res.vphi_samples
                     else:
                         samples_theta = []
-                        samples_r = []
-                        samples_vt = []
-                        samples_vphi = []
+                        samples_r = res.r_samples
 
-                # Disk detection (Python path; batch path handles disk above)
+                # Disk detection (Python path only; batch path skips for now)
                 disk_drawn = False
                 if disk is not None and status != RayStatus.CAPTURED and samples_theta:
-                    crossing = detect_equatorial_crossing_state(
-                        samples_theta, samples_r, samples_vt, samples_vphi
-                    )
-                    if crossing is not None:
+                    found, r_cross = detect_equatorial_crossing(samples_theta, samples_r)
+                    if found:
                         dh = disk_hit_from_equatorial_crossing(
-                            crossing.r_cross,
-                            disk,
-                            cfg.m,
-                            vt=crossing.vt_cross,
-                            vph=crossing.vph_cross,
+                            r_cross, disk, cfg.m, vt=float(v0[0]), vph=float(v0[3])
                         )
                         if dh.hit:
-                            dr, dg, db = disk_color_at_r(
-                                crossing.r_cross, dh.z_factor, disk
-                            )
+                            dr, dg, db = disk_color_at_r(r_cross, dh.z_factor, disk)
                             rgb[j, i, 0] = dr
                             rgb[j, i, 1] = dg
                             rgb[j, i, 2] = db
@@ -272,12 +241,12 @@ def render_schwarzschild_3d_image(
                         n_other += 1
 
     total = max(h * w, 1)
-    stats: RenderStats = {
+    stats = {
         "captured": n_cap,
         "escaped": n_esc,
         "other": n_other,
         "frac_captured": n_cap / total,
         "backend": backend,
-        "surrogate_frac": n_surrogate / total,
+        "supersample": max(getattr(cfg, "supersample", 1), 1),
     }
     return rgb, stats

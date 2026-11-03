@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
-
 from .phase1 import RayStatus
-
-MAX_NATIVE_BATCH_RAYS = 1_000_000
-
-_raw_trace: Callable[..., dict[str, Any]] | None
-_raw_batch_trace: Callable[..., dict[str, Any]] | None
 
 try:
     from blackhole_ray_tracer._native_phase2 import (
@@ -60,18 +54,14 @@ def schwarzschild_phase2_trace_native(
 ) -> dict[str, Any]:
     """Call C kernel `bh_rt_schwarzschild_phase2_trace` through PyBind11.
 
-    `y0` must represent shape (8,), order (t, r, θ, φ, v^t, v^r, v^θ, v^φ).
-    The façade converts input to contiguous float64 storage.
+    `y0` must be float64, shape (8,), order (t, r, θ, φ, v^t, v^r, v^θ, v^φ).
     """
     if _raw_trace is None:
         raise RuntimeError(
             "Native Phase 2 extension not built (_native_phase2). "
             "Reinstall package with a C++/C toolchain (pip/uv install -e .)."
         )
-    y = np.asarray(y0, dtype=np.float64)
-    if y.ndim != 1 or y.shape[0] != 8:
-        raise ValueError(f"y0 must be shape (8,), got {y.shape}")
-    y = np.ascontiguousarray(y)
+    y = np.asarray(y0, dtype=np.float64).reshape((8,))
     return _raw_trace(
         y, float(m), float(dlambda), int(max_steps), float(r_escape), float(r_horizon_epsilon)
     )
@@ -90,9 +80,9 @@ def schwarzschild_phase2_batch_native(
 
     Parameters
     ----------
-    y0_batch : array-like, shape (N, 8)
-        Initial states. The façade converts input to contiguous float64 storage.
-        N may be zero and must not exceed `MAX_NATIVE_BATCH_RAYS`.
+    y0_batch : float64 array, shape (N, 8)
+        Initial states for N rays, each row (t, r, θ, φ, v^t, v^r, v^θ, v^φ).
+
     Returns
     -------
     dict with numpy arrays:
@@ -100,10 +90,7 @@ def schwarzschild_phase2_batch_native(
         steps_taken     (N,) int32
         termination_r   (N,) float64
         r_min           (N,) float64
-        disk_hit        (N,) int32   — 1 if equatorial crossing detected
-        disk_r_cross    (N,) float64
-        disk_vt         (N,) float64
-        disk_vph        (N,) float64
+        eq_r_cross      (N,) float64 — first equatorial crossing r, NaN if none
     """
     if _raw_batch_trace is None:
         raise RuntimeError(
@@ -113,10 +100,6 @@ def schwarzschild_phase2_batch_native(
     batch = np.asarray(y0_batch, dtype=np.float64)
     if batch.ndim != 2 or batch.shape[1] != 8:
         raise ValueError(f"y0_batch must be shape (N, 8), got {batch.shape}")
-    if batch.shape[0] > MAX_NATIVE_BATCH_RAYS:
-        raise ValueError(
-            f"y0_batch exceeds maximum supported batch size {MAX_NATIVE_BATCH_RAYS}"
-        )
     batch = np.ascontiguousarray(batch)
     return _raw_batch_trace(
         batch, float(m), float(dlambda), int(max_steps), float(r_escape), float(r_horizon_epsilon)

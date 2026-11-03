@@ -2,8 +2,6 @@
 
 Pure C primitives for high-throughput tracing. **No Python headers** here.
 
-The Phase 2 API is the only supported 3D Schwarzschild implementation.
-
 ## File map
 
 | Path | Purpose |
@@ -12,11 +10,11 @@ The Phase 2 API is the only supported 3D Schwarzschild implementation.
 | `src/bh_rt_rk4.c` | RK4 implementation (`workspace` = `5 × n` doubles) |
 | `include/bh_rt_schwarzschild_u.h` | Equatorial 2D Schwarzschild trace in u(φ) |
 | `src/bh_rt_schwarzschild_u.c` | Mirrors `phase1.trace_single_schwarzschild_ray` |
-| `include/bh_rt_status.h` | Canonical `BH_RT_STATUS_*` constants (0–3) |
+| `include/bh_rt_status.h` | Canonical `BH_RT_STATUS_*` int constants (0–3) |
 | `include/bh_rt_schwarzschild_phase2.h` | Phase 2 single-ray API + result struct |
-| `src/bh_rt_schwarzschild_phase2.c` | Canonical 3D Schwarzschild scalar trace and helpers |
+| `src/bh_rt_schwarzschild_phase2.c` | 3D Schwarzschild trace; exposes shared helpers |
 | `include/bh_rt_schwarzschild_phase2_internal.h` | Shared Christoffel / renormalize helpers |
-| `include/bh_rt_schwarzschild_phase2_batch.h` | N-ray row-major batch API contract |
+| `include/bh_rt_schwarzschild_phase2_batch.h` | N-ray SoA batch API contract |
 | `src/bh_rt_schwarzschild_phase2_batch.c` | CPU batch implementation |
 | `cuda/bh_rt_schwarzschild_phase2_batch.cu` | CUDA port of the batch kernel |
 | `src/demo_harmonic.c` | Harmonic oscillator RK4 smoke demo |
@@ -26,7 +24,7 @@ The Phase 2 API is the only supported 3D Schwarzschild implementation.
 ## Build (CPU)
 
 ```bash
-make -C kernel          # builds harmonic_demo, schwarzschild_demo, phase2_batch_demo
+make -C kernel          # builds all: harmonic_demo, schwarzschild_demo, phase2_batch_demo
 make -C kernel clean
 ```
 

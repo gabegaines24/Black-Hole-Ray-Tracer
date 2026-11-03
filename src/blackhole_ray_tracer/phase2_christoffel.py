@@ -41,7 +41,7 @@ def christoffel_schwarzschild(mu: int, a: int, b: int, r: float, th: float, m: f
         if a == I_T and b == I_T:
             return m * f / r2
         if a == I_R and b == I_R:
-            return -m / (r2 * f)
+            return m / (r2 * f)
         if a == I_TH and b == I_TH:
             return -r * f
         if a == I_PH and b == I_PH:

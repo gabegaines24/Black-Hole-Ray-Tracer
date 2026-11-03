@@ -1,7 +1,5 @@
 #pragma once
 
-#include <stdint.h>
-
 /* Batched 3D null-geodesic tracer for Schwarzschild (Christoffel + RK4).
  *
  * Memory layout (SoA-friendly, row-major):
@@ -22,37 +20,33 @@ extern "C" {
  * Parameters
  * ----------
  * y0                : double[N * 8]  — initial states, row-major (one state per row)
- * n                 : int32_t        — number of rays in the batch
+ * n                 : int            — number of rays in the batch
  * m                 : double         — black hole mass (geometric units)
  * dlambda           : double         — affine parameter step
- * max_steps         : int32_t        — per-ray step budget
+ * max_steps         : int            — per-ray step budget
  * r_escape          : double         — escape radius
  * r_horizon_epsilon : double         — capture threshold offset above 2M
  *
- * out_status        : int32_t[N]     — per-ray termination status (BH_RT_STATUS_*)
- * out_steps_taken   : int32_t[N]     — steps consumed by each ray
+ * Outputs (all length-N arrays, caller-allocated)
+ * -------
+ * out_status        : int[N]         — per-ray termination status (BH_RT_STATUS_*)
+ * out_steps_taken   : int[N]         — steps consumed by each ray
  * out_termination_r : double[N]      — r coordinate at termination
  * out_r_min         : double[N]      — minimum r reached (NAN if never tracked)
- * out_disk_hit      : int32_t[N]     — 1 if first equatorial (θ=π/2) crossing detected
- * out_disk_r_cross  : double[N]      — interpolated r at crossing (NAN if no hit)
- * out_disk_vt       : double[N]      — v^t at crossing (NAN if no hit)
- * out_disk_vph      : double[N]      — v^φ at crossing (NAN if no hit) */
+ * out_eq_r_cross    : double[N]      — r at first equatorial (theta=pi/2) crossing, NAN if none */
 void bh_rt_schwarzschild_phase2_batch_trace(
     const double *y0,
-    int32_t n,
+    int n,
     double m,
     double dlambda,
-    int32_t max_steps,
+    int max_steps,
     double r_escape,
     double r_horizon_epsilon,
-    int32_t    *out_status,
-    int32_t    *out_steps_taken,
+    int    *out_status,
+    int    *out_steps_taken,
     double *out_termination_r,
     double *out_r_min,
-    int32_t    *out_disk_hit,
-    double *out_disk_r_cross,
-    double *out_disk_vt,
-    double *out_disk_vph);
+    double *out_eq_r_cross);
 
 #ifdef __cplusplus
 }

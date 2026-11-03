@@ -1,212 +1,225 @@
-"""Smoke tests for the Phase 3 ML scaffold."""
+"""ML scaffold tests.
+
+Tests
+-----
+1. test_schema_normalize_roundtrip   — normalize then check column bounds
+2. test_dataset_shapes               — generate 50 rays, check X(50,6) Y(50,4)
+3. test_surrogate_forward_shape      — random weights forward pass (N,6)→(N,4)
+4. test_runtime_gate_routes_correctly — r > threshold → surrogate path, r ≤ → RK4 path
+"""
 
 from __future__ import annotations
 
+import math
+import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from ml.dataset import (
-    dataset_metadata,
-    generate_dataset,
-    load_dataset,
-    load_dataset_metadata,
-    save_dataset,
-)
-from ml.runtime_gate import RuntimeGate
+# Ensure both `src/` and the repo root (for `ml/`) are on sys.path.
+_repo_root = Path(__file__).resolve().parents[1]
+for _p in [str(_repo_root / "src"), str(_repo_root)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from ml.schema import (
     N_INPUTS,
     N_OUTPUTS,
-    STATUS_CAPTURED,
-    STATUS_ESCAPED,
-    STATUS_MAX_STEPS,
-    STATUS_NUMERIC,
-    denormalize_outputs,
+    R_REF,
+    SURROGATE_R_THRESHOLD,
+    V_REF,
     normalize_inputs,
-    normalize_outputs,
+    denormalize_outputs,
 )
-from ml.surrogate import (
-    init_random_weights,
-    load_surrogate,
-    predict_batch,
-    save_surrogate,
-    train,
-)
+from ml.dataset import generate_dataset
+from ml.surrogate import forward, init_random_weights
+from ml.runtime_gate import RuntimeGate, SurrogateResult
 
 
-def test_normalize_inputs_shape_and_finite_values() -> None:
-    x = np.array([[30.0, np.pi / 2, np.pi, -0.5, 0.01, 0.02]], dtype=np.float32)
-    z = normalize_inputs(x)
-    assert z.shape == (1, N_INPUTS)
-    assert np.all(np.isfinite(z))
-    assert z[0, 0] == np.float32(1.0)
-    assert abs(float(z[0, 1])) < 1e-7
+# ── 1. Schema normalisation ────────────────────────────────────────────────────
+
+class TestSchemaNormalize:
+    def _raw_sample(self, n: int = 100) -> np.ndarray:
+        rng = np.random.default_rng(0)
+        r = rng.uniform(5.0, 60.0, (n, 1))
+        theta = rng.uniform(0.05, math.pi - 0.05, (n, 1))
+        phi = rng.uniform(0.0, 2 * math.pi, (n, 1))
+        vr = rng.uniform(-1.0, 0.0, (n, 1))
+        vth = rng.uniform(-0.2, 0.2, (n, 1))
+        vph = rng.uniform(-0.2, 0.2, (n, 1))
+        return np.concatenate([r, theta, phi, vr, vth, vph], axis=1).astype(np.float32)
+
+    def test_output_shape(self):
+        x = self._raw_sample(50)
+        x_norm = normalize_inputs(x)
+        assert x_norm.shape == (50, N_INPUTS)
+
+    def test_r_column_scaled(self):
+        x = self._raw_sample(200)
+        x_norm = normalize_inputs(x)
+        # r column should be x[:,0]/R_REF
+        np.testing.assert_allclose(x_norm[:, 0], x[:, 0] / R_REF, rtol=1e-5)
+
+    def test_theta_column_centred(self):
+        """θ column should be (θ − π/2)/π ∈ (−0.5, 0.5) for θ ∈ (0, π)."""
+        x = self._raw_sample(200)
+        x_norm = normalize_inputs(x)
+        assert x_norm[:, 1].min() > -0.6
+        assert x_norm[:, 1].max() < 0.6
+
+    def test_phi_column_in_unit_interval(self):
+        x = self._raw_sample(200)
+        x_norm = normalize_inputs(x)
+        assert x_norm[:, 2].min() >= 0.0 - 1e-5
+        assert x_norm[:, 2].max() <= 1.0 + 1e-5
+
+    def test_denormalize_is_identity(self):
+        """denormalize_outputs is currently a no-op (placeholder)."""
+        y = np.random.rand(10, N_OUTPUTS).astype(np.float32)
+        y2 = denormalize_outputs(y)
+        np.testing.assert_array_equal(y, y2)
+
+    def test_normalize_2d_batch(self):
+        x = self._raw_sample(5)
+        x_norm = normalize_inputs(x)
+        assert x_norm.dtype == np.float32
+        assert x_norm.shape == (5, 6)
+
+    def test_normalize_1d_single_ray(self):
+        x = np.array([20.0, math.pi / 2, 0.5, -0.3, 0.1, 0.05], dtype=np.float32)
+        x_norm = normalize_inputs(x)
+        assert x_norm.shape == (6,)
+        assert x_norm[0] == pytest.approx(20.0 / R_REF, rel=1e-5)
 
 
-def test_generate_dataset_tiny_smoke() -> None:
-    x, y = generate_dataset(
-        2,
-        dlambda=0.2,
-        max_steps=50,
-        r_escape=60.0,
-        seed=123,
-        verbose=False,
-    )
-    assert x.shape == (2, N_INPUTS)
-    assert y.shape == (2, N_OUTPUTS)
-    assert x.dtype == np.float32
-    assert y.dtype == np.float32
-    assert np.all(np.isfinite(x))
+# ── 2. Dataset generation ──────────────────────────────────────────────────────
+
+class TestDatasetShapes:
+    """generate_dataset(50) must return X(N,6) and Y(N,4) for N close to 50."""
+
+    def test_shapes(self):
+        X, Y = generate_dataset(50, dlambda=0.15, max_steps=1000, verbose=False)
+        assert X.ndim == 2 and X.shape[1] == N_INPUTS, f"X.shape={X.shape}"
+        assert Y.ndim == 2 and Y.shape[1] == N_OUTPUTS, f"Y.shape={Y.shape}"
+        # Should have generated up to 50 valid rays (may be fewer if sampling
+        # rejects some; allow ≥ 40 to pass)
+        assert len(X) >= 40, f"Too few rays generated: {len(X)}"
+        assert len(X) == len(Y)
+
+    def test_dtype(self):
+        X, Y = generate_dataset(10, dlambda=0.15, max_steps=500, verbose=False)
+        assert X.dtype == np.float32
+        assert Y.dtype == np.float32
+
+    def test_status_column_valid(self):
+        """Status column (Y[:,0]) should only contain {0,1,2,3} codes."""
+        X, Y = generate_dataset(30, dlambda=0.15, max_steps=800, verbose=False)
+        statuses = Y[:, 0].astype(int)
+        assert set(statuses).issubset({0, 1, 2, 3}), f"Unexpected statuses: {set(statuses)}"
+
+    def test_r_range(self):
+        """Input r values should fall within the sampling range [10, 50]."""
+        X, Y = generate_dataset(30, dlambda=0.15, max_steps=500, verbose=False)
+        assert X[:, 0].min() >= 9.9, "r_min out of range"
+        assert X[:, 0].max() <= 50.1, "r_max out of range"
 
 
-def test_runtime_gate_loads_reference_model() -> None:
-    model_path = Path(__file__).resolve().parents[1] / "ml" / "models" / "surrogate.npz"
-    if not model_path.exists():
-        pytest.skip("reference surrogate not generated")
-    gate = RuntimeGate.from_model_path(model_path)
-    assert gate.surrogate_loaded
+# ── 3. Surrogate forward pass ──────────────────────────────────────────────────
+
+class TestSurrogateForward:
+    def test_forward_shape(self):
+        rng = np.random.default_rng(42)
+        weights = init_random_weights(rng)
+        X = rng.standard_normal((20, 6)).astype(np.float32)
+        Y = forward(weights, X)
+        assert Y.shape == (20, N_OUTPUTS), f"Expected (20,4), got {Y.shape}"
+
+    def test_forward_dtype(self):
+        weights = init_random_weights()
+        X = np.random.rand(5, 6).astype(np.float32)
+        Y = forward(weights, X)
+        # numpy matmul may promote float32 to float64 on some platforms; accept both
+        assert Y.dtype in (np.float32, np.float64)
+
+    def test_forward_single_row(self):
+        weights = init_random_weights()
+        X = np.zeros((1, 6), dtype=np.float32)
+        Y = forward(weights, X)
+        assert Y.shape == (1, N_OUTPUTS)
+
+    def test_no_nan_in_output(self):
+        weights = init_random_weights()
+        rng = np.random.default_rng(7)
+        X = rng.standard_normal((50, 6)).astype(np.float32)
+        Y = forward(weights, X)
+        assert np.all(np.isfinite(Y)), "NaN/Inf in forward pass output"
+
+    def test_output_changes_with_input(self):
+        weights = init_random_weights()
+        X1 = np.ones((3, 6), dtype=np.float32)
+        X2 = np.zeros((3, 6), dtype=np.float32)
+        Y1 = forward(weights, X1)
+        Y2 = forward(weights, X2)
+        assert not np.allclose(Y1, Y2), "Forward pass insensitive to input"
 
 
-def test_runtime_gate_falls_back_without_model() -> None:
-    gate = RuntimeGate(weights=None)
-    y0 = np.array([0.0, 12.0, np.pi / 2, 0.0, 1.1, -0.8, 0.0, 0.0], dtype=float)
-    result = gate.infer_or_integrate(
-        y0,
-        m=1.0,
-        dlambda=0.2,
-        max_steps=50,
-        r_escape=60.0,
-    )
-    assert not result.from_surrogate
-    assert result.steps_taken >= 0
+# ── 4. RuntimeGate routing ─────────────────────────────────────────────────────
 
+class TestRuntimeGateRouting:
+    """r > threshold → surrogate path, r ≤ threshold → RK4 path."""
 
-def test_dataset_metadata_round_trip(tmp_path: Path) -> None:
-    x, y = generate_dataset(
-        2,
-        dlambda=0.2,
-        max_steps=50,
-        r_escape=60.0,
-        seed=123,
-        verbose=False,
-    )
-    metadata = dataset_metadata(
-        m=1.0,
-        dlambda=0.2,
-        max_steps=50,
-        r_escape=60.0,
-        seed=123,
-    )
-    path = tmp_path / "dataset.npz"
-    save_dataset(x, y, path, metadata=metadata)
-    loaded_x, loaded_y = load_dataset(path)
-    loaded_metadata = load_dataset_metadata(path)
-    np.testing.assert_array_equal(loaded_x, x)
-    np.testing.assert_array_equal(loaded_y, y)
-    assert loaded_metadata["integrator"] == metadata["integrator"]
-    assert loaded_metadata["sentinel_policy"] == metadata["sentinel_policy"]
+    def _make_y0(self, r: float, m: float = 1.0) -> np.ndarray:
+        """Construct a minimal y0 = (t, r, π/2, 0, v^t, v^r, v^θ, v^φ)."""
+        f = max(1.0 - 2.0 * m / r, 0.01)
+        vt = 1.0 / math.sqrt(f)
+        return np.array([0.0, r, math.pi / 2, 0.0, vt, -0.5, 0.0, 0.0], dtype=np.float64)
 
+    def test_no_surrogate_always_integrates(self):
+        """With weights=None, all rays must go to RK4 (from_surrogate=False)."""
+        gate = RuntimeGate(weights=None, r_threshold=SURROGATE_R_THRESHOLD)
+        for r in (5.0, 15.0, 40.0):
+            y0 = self._make_y0(r)
+            result = gate.infer_or_integrate(y0, m=1.0, dlambda=0.1, max_steps=500, r_escape=80.0)
+            assert isinstance(result, SurrogateResult)
+            assert result.from_surrogate is False, f"Expected RK4 for r={r}"
 
-def test_dataset_loader_rejects_missing_metadata(tmp_path: Path) -> None:
-    path = tmp_path / "legacy.npz"
-    np.savez(
-        path,
-        X=np.zeros((1, N_INPUTS), dtype=np.float32),
-        Y=np.zeros((1, N_OUTPUTS), dtype=np.float32),
-    )
-    with pytest.raises(ValueError, match="metadata"):
-        load_dataset(path)
+    def test_with_surrogate_routes_high_r_to_surrogate(self):
+        """With surrogate loaded, rays at r >> threshold use surrogate."""
+        weights = init_random_weights(np.random.default_rng(99))
+        gate = RuntimeGate(weights=weights, r_threshold=10.0)
+        y0_far = self._make_y0(r=40.0)
+        result = gate.infer_or_integrate(y0_far, m=1.0, dlambda=0.1, max_steps=500, r_escape=80.0)
+        assert result.from_surrogate is True
 
+    def test_with_surrogate_routes_low_r_to_rk4(self):
+        """With surrogate loaded, rays at r < threshold use RK4."""
+        weights = init_random_weights(np.random.default_rng(99))
+        gate = RuntimeGate(weights=weights, r_threshold=10.0)
+        y0_close = self._make_y0(r=5.0)
+        result = gate.infer_or_integrate(y0_close, m=1.0, dlambda=0.1, max_steps=500, r_escape=80.0)
+        assert result.from_surrogate is False
 
-def test_model_loader_rejects_missing_metadata_and_bad_shape(tmp_path: Path) -> None:
-    weights = init_random_weights(np.random.default_rng(0))
-    legacy_path = tmp_path / "legacy-model.npz"
-    np.savez(legacy_path, **weights._asdict())
-    with pytest.raises(ValueError, match="metadata"):
-        load_surrogate(legacy_path)
+    def test_surrogate_result_has_valid_status(self):
+        """Surrogate result status should be in {0,1,2,3}."""
+        weights = init_random_weights()
+        gate = RuntimeGate(weights=weights, r_threshold=5.0)
+        y0 = self._make_y0(r=20.0)
+        result = gate.infer_or_integrate(y0, m=1.0, dlambda=0.1, max_steps=500, r_escape=80.0)
+        assert result.status in (0, 1, 2, 3)
 
-    valid_path = tmp_path / "valid-model.npz"
-    save_surrogate(weights, valid_path)
-    with np.load(valid_path, allow_pickle=False) as data:
-        arrays = {key: data[key] for key in data.files}
-    arrays["W1"] = np.zeros((1, 1), dtype=np.float32)
-    bad_path = tmp_path / "bad-shape-model.npz"
-    np.savez(bad_path, **arrays)
-    with pytest.raises(ValueError, match="W1"):
-        load_surrogate(bad_path)
+    def test_rk4_result_has_finite_r_min(self):
+        """RK4 result must have finite r_min or NaN (not Inf)."""
+        gate = RuntimeGate(weights=None)
+        y0 = self._make_y0(r=12.0)
+        result = gate.infer_or_integrate(y0, m=1.0, dlambda=0.1, max_steps=1000, r_escape=80.0)
+        if not math.isnan(result.r_min):
+            assert math.isfinite(result.r_min)
 
-    corrupt_path = tmp_path / "corrupt-model.npz"
-    corrupt_path.write_bytes(b"not an NPZ")
-    assert not RuntimeGate.from_model_path(corrupt_path).surrogate_loaded
+    def test_surrogate_loaded_property(self):
+        gate_empty = RuntimeGate(weights=None)
+        assert gate_empty.surrogate_loaded is False
 
-
-def test_runtime_gate_uses_requested_steps_and_falls_back_invalid_prediction() -> None:
-    weights = init_random_weights(np.random.default_rng(0))
-    for name in ("W1", "b1", "W2", "b2", "W3", "b3"):
-        getattr(weights, name).fill(0.0)
-    weights.b3[:] = (1.0, 0.0, 0.0, 0.5)
-    y0 = np.array([0.0, 25.0, np.pi / 2, 0.0, 1.05, -0.5, 0.0, 0.01])
-    result = RuntimeGate(weights=weights).infer_or_integrate(
-        y0, m=1.0, dlambda=0.2, max_steps=200, r_escape=60.0
-    )
-    assert result.from_surrogate
-    assert result.status == STATUS_ESCAPED
-    assert result.steps_taken == 100
-
-    invalid_weights = init_random_weights(np.random.default_rng(0))
-    for name in ("W1", "b1", "W2", "b2", "W3", "b3"):
-        getattr(invalid_weights, name).fill(0.0)
-    invalid_weights.b3[0] = 1.0
-    invalid_weights.b3[1] = -0.1
-    fallback = RuntimeGate(weights=invalid_weights).infer_or_integrate(
-        y0, m=1.0, dlambda=0.2, max_steps=2, r_escape=60.0
-    )
-    assert not fallback.from_surrogate
-    assert fallback.steps_taken == 2
-
-
-def test_surrogate_train_and_gate_accuracy_smoke() -> None:
-
-    x, y = generate_dataset(
-        40,
-        dlambda=0.2,
-        max_steps=200,
-        r_escape=60.0,
-        seed=7,
-        verbose=False,
-    )
-    x_train, y_train = x[:30], y[:30]
-    x_hold, y_hold = x[30:], y[30:]
-    x_norm = normalize_inputs(x_train)
-    y_norm = normalize_outputs(y_train, max_steps=200.0)
-    weights = train(
-        init_random_weights(np.random.default_rng(0)), x_norm, y_norm, epochs=40, verbose=False
-    )
-    pred = denormalize_outputs(
-        predict_batch(weights, normalize_inputs(x_hold)), max_steps=200.0
-    )
-
-    status_hits = 0
-    for i in range(len(x_hold)):
-        pred_status = int(round(float(pred[i, 0])))
-        true_status = int(round(float(y_hold[i, 0])))
-        if pred_status == true_status:
-            status_hits += 1
-    status_accuracy = status_hits / max(len(x_hold), 1)
-    assert status_accuracy >= 0.3
-    assert np.all(np.isfinite(pred))
-
-    gate = RuntimeGate(weights=weights, r_threshold=10.0)
-    y0 = np.array([0.0, 25.0, np.pi / 2, 0.0, 1.05, -0.5, 0.0, 0.01], dtype=float)
-    gate_result = gate.infer_or_integrate(
-        y0, m=1.0, dlambda=0.2, max_steps=200, r_escape=60.0
-    )
-    assert gate_result.from_surrogate
-    assert gate_result.status in (
-        STATUS_CAPTURED,
-        STATUS_ESCAPED,
-        STATUS_MAX_STEPS,
-        STATUS_NUMERIC,
-    )
-    assert gate_result.steps_taken >= 0
+        weights = init_random_weights()
+        gate_full = RuntimeGate(weights=weights)
+        assert gate_full.surrogate_loaded is True

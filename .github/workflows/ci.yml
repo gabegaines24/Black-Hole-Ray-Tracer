@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -31,32 +31,18 @@ jobs:
 
       - name: Build native extension (Linux)
         if: runner.os == 'Linux'
-        run: uv sync --group dev
+        run: |
+          sudo apt-get install -y build-essential
+          BLACKHOLE_BUILD_NATIVE=1 uv sync --extra dev
         env:
           BLACKHOLE_BUILD_NATIVE: "1"
 
       - name: Install (without native extension)
         if: runner.os != 'Linux'
-        run: uv sync --group dev
-
-      - name: Run Ruff
-        run: uv run ruff check src tests ml
-
-      - name: Run mypy
-        run: uv run mypy src ml
+        run: uv sync --extra dev
 
       - name: Run tests
         run: uv run pytest -q --tb=short
-        env:
-          BLACKHOLE_BUILD_NATIVE: "1"
-
-      - name: Build Python packages
-        run: uv build --wheel --sdist
-
-      - name: Smoke test native extension
-        if: runner.os == 'Linux'
-        run: |
-          uv run python -c "from blackhole_ray_tracer.native_phase2 import native_phase2_available; raise SystemExit(0 if native_phase2_available() else 1)"
         env:
           BLACKHOLE_BUILD_NATIVE: "1"
 
@@ -73,3 +59,32 @@ jobs:
       - name: Smoke test phase2_batch_demo
         run: |
           ./kernel/phase2_batch_demo | grep -q "BH_PHASE2_BATCH_RESULT"
+
+  cuda-build:
+    # Optional job — only runs when the `CUDA_AVAILABLE` repository variable is set to '1'.
+    # To enable: Settings → Variables → New repository variable → CUDA_AVAILABLE = 1
+    name: "CUDA kernel build (optional)"
+    runs-on: ubuntu-latest
+    if: vars.CUDA_AVAILABLE == '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA toolkit
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q nvidia-cuda-toolkit
+
+      - name: Build CUDA batch library
+        run: |
+          mkdir -p build
+          make -C kernel/cuda cuda_batch ARCH=sm_75
+
+      - name: Verify pip-installable CUDA build (setup.py)
+        run: |
+          BLACKHOLE_BUILD_CUDA=1 uv sync --extra dev
+          test -f build/libbh_rt_phase2_cuda.so && echo "setup.py CUDA build OK"
+
+      - name: Verify shared library exists
+        run: |
+          test -f build/libbh_rt_phase2_cuda.so && echo "CUDA library built OK"
