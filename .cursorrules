@@ -4,20 +4,20 @@
 
 ## Project identity
 
-This is **blackhole_ray_tracer**: a Python-first null-geodesic ray tracer for Schwarzschild (and eventually Kerr) spacetimes.
-Architecture direction: Python prototypes → C kernel (`kernel/`) → pybind11 bridge (`bridge/`) → optional GPU path.
+This is **blackhole_ray_tracer**: a Python-first null-geodesic ray tracer for Schwarzschild and a validated Python Kerr prototype.
+Architecture: Python references → canonical C Phase 2 kernel → pybind11 CPU bridge; optional CUDA batch path; experimental ML gate.
 
 ---
 
 ## Hard rules (never violate)
 
-1. **Verify before assuming.** Before referencing any file under `kernel/`, `bridge/`, or `ml/`, list the directory first. Those directories may be empty scaffolds. Never claim an implementation exists without seeing it.
+1. **Verify before assuming.** Before referencing any file under `kernel/`, `bridge/`, or `ml/`, inspect its current contents. Current source exists in all three directories; future files may not.
 
 2. **Run tests before claiming completion.** After any substantive Python edit, run `uv run pytest`. Do not mark a task done if tests fail or were not run.
 
 3. **Minimal diffs.** Change only what is required for the stated goal. Do not refactor adjacent code, rename symbols, or reformat files unless that is the explicit task.
 
-4. **Preserve phase naming.** Module names follow the pattern `phase1_*`, `phase2_*`, future `phaseN_*`, `kernel/`, `bridge/`, `ml/`. Do not flatten, rename, or merge phases.
+4. **Preserve phase naming.** Module names follow `phase1_*`, `phase2_*`, `phase3_*`, future `phaseN_*`, `kernel/`, `bridge/`, and `ml/`. Do not flatten, rename, or merge phases.
 
 5. **Reuse `rk4_step`.** The shared integrator lives in `phase1.py`. Reuse it everywhere in Python unless the task is explicitly porting it to the C kernel.
 
@@ -33,8 +33,8 @@ Architecture direction: Python prototypes → C kernel (`kernel/`) → pybind11 
 uv sync                          # install deps
 uv sync --group dev              # add pytest, ruff, mypy
 uv run pytest                    # run all tests
-uv run ruff check src tests      # lint
-uv run mypy src                  # type-check (dev group)
+uv run ruff check src tests ml
+uv run mypy src ml
 uv run blackhole-ray-tracer --help
 ```
 
@@ -42,40 +42,34 @@ Always prefer `uv run <tool>` over bare `python` or `pytest` invocations.
 
 ---
 
-## Source layout (what is implemented)
+## Source layout (verify current files before edits)
 
 ```
 src/blackhole_ray_tracer/
-  phase1.py              # shared rk4_step, equatorial Schwarzschild, batch helpers
-  phase1_driver.py       # CLI steps A–F
-  phase1_image.py        # PPM writer, Einstein ring
-  phase1_tuning.py       # presets + benchmark report
-  phase2_christoffel.py  # Christoffel symbols
-  phase2_geodesic.py     # 3D null RK4 in affine parameter
-  phase2_camera.py       # static observer pinhole initializer
-  phase2_types.py        # shared types
-  phase2_render.py       # pinhole image loop, PPM output
-  phase2_report.py       # presets + benchmark
-  phase2_driver.py       # CLI for phase 2
-  main.py                # blackhole-ray-tracer console script entry
+  phase1.py, phase1_driver.py, phase1_image.py, phase1_tuning.py
+  phase2_christoffel.py, phase2_geodesic.py, phase2_camera.py
+  phase2_types.py, phase2_disk.py, phase2_batch.py
+  phase2_render.py, phase2_report.py, phase2_driver.py
+  phase3_christoffel.py, phase3_geodesic.py, phase3_camera.py
+  phase3_types.py, phase3_render.py, phase3_report.py, phase3_driver.py
+  native_phase2.py, native_phase2_cuda.py, preview.py, main.py
 
 tests/
-  test_phase1_extensions.py
-  test_phase2.py
+  phase, kernel, bridge, CUDA, ML, preview, and CLI coverage
 
 docs/
-  OVERVIEW.md
-  ROADMAP.md
-  AGENT_PROMPT.md
+  OVERVIEW.md, ROADMAP.md, STATUS.md, PROJECT_CONTRACT.md
+  STATE_API.md, KERR_BOYER_LINDQUIST.md, IMPLEMENTATION/
 
 kernel/
-  include/bh_rt_rk4.h
-  src/bh_rt_rk4.c
-  src/demo_harmonic.c    # Phase A harmonic parity CLI
-  Makefile README.md
+  include/ and src/ canonical Phase 1/Phase 2 C APIs plus Kerr metric/RHS/camera/tracer/crossing/disk observables
+  cuda/ optional Phase 2 CUDA batch launcher
 
-bridge/    # PLANNED — may be empty; verify before touching
-ml/        # PLANNED — may be empty; verify before touching
+bridge/
+  module_phase2.cpp PyBind11 CPU scalar/batch bridge
+
+ml/
+  schema.py, dataset.py, surrogate.py, runtime_gate.py, models/
 ```
 
 ---
@@ -95,11 +89,12 @@ ml/        # PLANNED — may be empty; verify before touching
 | Change type | Target location |
 |---|---|
 | New 2D Schwarzschild experiment | `phase1.py` helpers or `phase1_*` modules |
-| New 3D prototype before C kernel | `phase2_*` modules + minimal driver changes |
+| New 3D Schwarzschild prototype | `phase2_*` modules + minimal driver changes |
 | Shared Python integrator primitive | Keep in `phase1.py` until kernel deliberately duplicates it |
-| C performance kernel | `kernel/` + `bridge/`; document API in `ROADMAP.md` first |
-| Kerr / Boyer-Lindquist coordinates | Future `phase3_*` or `kerr_*`; BL coordinate choice must be documented in ROADMAP before implementation begins |
-| ML surrogate | `ml/`; dataset format must be documented before training code |
+| C performance kernel | `kernel/` + `bridge/`; document API in `docs/STATE_API.md` and `docs/ROADMAP.md` |
+| Kerr / Boyer–Lindquist prototype | `phase3_*`; use BL names and preserve Python-only boundary |
+| Future Kerr native port | New ticket, ABI, analytic parity, and Python parity before implementation |
+| ML surrogate | `ml/`; metadata schema and fallback contract required |
 
 ---
 

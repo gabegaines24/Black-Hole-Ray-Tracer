@@ -11,6 +11,14 @@ Current surface:
 
 | Translation unit | Wrapped API |
 |------------------|-------------|
-| [`module_phase2.cpp`](module_phase2.cpp) | [`bh_rt_schwarzschild_phase2_trace`](../kernel/include/bh_rt_schwarzschild_phase2.h) |
+| [`module_phase2.cpp`](module_phase2.cpp) | Phase 2 scalar and SoA batch C APIs from [`bh_rt_schwarzschild_phase2.h`](../kernel/include/bh_rt_schwarzschild_phase2.h) and [`bh_rt_schwarzschild_phase2_batch.h`](../kernel/include/bh_rt_schwarzschild_phase2_batch.h) |
 
-Build hooks live in repo-root [`setup.py`](../setup.py); Python helpers in [`native_phase2.py`](../src/blackhole_ray_tracer/native_phase2.py). Import `blackhole_ray_tracer._native_phase2` after an editable/`uv` install with compilers enabled.
+The PyBind11 module owns NumPy validation, contiguous conversion, output allocation, and GIL release.
+It does not own physics or backend fallback.
+The optional CUDA launcher uses ctypes through
+[`native_phase2_cuda.py`](../src/blackhole_ray_tracer/native_phase2_cuda.py), not this PyBind11 module.
+CUDA parity remains conditional on local `nvcc` and GPU availability.
+
+Build hooks live in repo-root [`setup.py`](../setup.py); Python helpers in
+[`native_phase2.py`](../src/blackhole_ray_tracer/native_phase2.py).
+Import `blackhole_ray_tracer._native_phase2` after an editable/`uv` install with compilers enabled.
