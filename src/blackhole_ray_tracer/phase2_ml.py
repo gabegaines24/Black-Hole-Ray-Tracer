@@ -16,8 +16,9 @@ def make_runtime_gate(cfg: Phase2RenderConfig):
     """Build a ``RuntimeGate`` from render config (loads weights when configured)."""
     from ml.runtime_gate import RuntimeGate
 
-    if cfg.ml_model_path is not None:
-        return RuntimeGate.from_model_path(cfg.ml_model_path, r_threshold=cfg.ml_r_threshold)
+    model_path = cfg.ml_model_path or cfg.ml_gate_model_path
+    if model_path is not None:
+        return RuntimeGate.from_model_path(model_path, r_threshold=cfg.ml_r_threshold)
     if _DEFAULT_MODEL.is_file():
         return RuntimeGate.from_model_path(_DEFAULT_MODEL, r_threshold=cfg.ml_r_threshold)
     return RuntimeGate(weights=None, r_threshold=cfg.ml_r_threshold)
@@ -25,8 +26,9 @@ def make_runtime_gate(cfg: Phase2RenderConfig):
 
 def ml_surrogate_available(cfg: Phase2RenderConfig) -> bool:
     """Return True when a surrogate model can be loaded for this config."""
-    if cfg.ml_model_path is not None:
-        return Path(cfg.ml_model_path).is_file()
+    model_path = cfg.ml_model_path or cfg.ml_gate_model_path
+    if model_path is not None:
+        return Path(model_path).is_file()
     return _DEFAULT_MODEL.is_file()
 
 
