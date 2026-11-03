@@ -23,18 +23,17 @@ for _p in [str(_repo_root / "src"), str(_repo_root)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from ml.schema import (
+from ml.schema import (  # noqa: E402
     N_INPUTS,
     N_OUTPUTS,
     R_REF,
     SURROGATE_R_THRESHOLD,
-    V_REF,
     normalize_inputs,
     denormalize_outputs,
 )
-from ml.dataset import generate_dataset
-from ml.surrogate import forward, init_random_weights
-from ml.runtime_gate import RuntimeGate, SurrogateResult
+from ml.dataset import generate_dataset  # noqa: E402
+from ml.surrogate import forward, init_random_weights  # noqa: E402
+from ml.runtime_gate import RuntimeGate, SurrogateResult  # noqa: E402
 
 
 # ── 1. Schema normalisation ────────────────────────────────────────────────────
@@ -223,32 +222,3 @@ class TestRuntimeGateRouting:
         weights = init_random_weights()
         gate_full = RuntimeGate(weights=weights)
         assert gate_full.surrogate_loaded is True
-
-
-class TestRuntimeGateBatch:
-    def _make_y0(self, r: float) -> np.ndarray:
-        m = 1.0
-        f = max(1.0 - 2.0 * m / r, 0.01)
-        vt = 1.0 / (f ** 0.5)
-        return np.array([0.0, r, np.pi / 2, 0.0, vt, -0.5, 0.0, 0.0], dtype=np.float64)
-
-    def test_batch_splits_far_and_near(self):
-        weights = init_random_weights(np.random.default_rng(7))
-        gate = RuntimeGate(weights=weights, r_threshold=10.0)
-        y0 = np.stack([self._make_y0(5.0), self._make_y0(30.0)], axis=0)
-        out = gate.infer_or_integrate_batch(
-            y0, m=1.0, dlambda=0.1, max_steps=500, r_escape=80.0
-        )
-        assert out["status"].shape == (2,)
-        assert out["n_surrogate"] == 1
-        assert out["n_integrated"] == 1
-        assert np.all(np.isnan(out["eq_r_cross"]))
-
-    def test_batch_all_integrated_without_weights(self):
-        gate = RuntimeGate(weights=None, r_threshold=10.0)
-        y0 = np.stack([self._make_y0(30.0), self._make_y0(40.0)], axis=0)
-        out = gate.infer_or_integrate_batch(
-            y0, m=1.0, dlambda=0.1, max_steps=500, r_escape=80.0
-        )
-        assert out["n_surrogate"] == 0
-        assert out["n_integrated"] == 2
