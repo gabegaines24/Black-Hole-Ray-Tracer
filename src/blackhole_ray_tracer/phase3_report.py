@@ -7,10 +7,10 @@ from typing import TypedDict
 
 import numpy as np
 
-from .phase2_camera import (
+from .phase3_camera import (
     initial_position_observer,
-    make_camera_from_config,
-    static_observer_null_direction,
+    make_kerr_camera_from_config,
+    zamo_null_direction,
 )
 from .phase3_geodesic import trace_kerr_null_geodesic
 from .phase3_types import KerrRenderConfig
@@ -103,8 +103,9 @@ def phase3_single_ray_benchmark(
     spin: float = 0.5,
     dlambda_values: tuple[float, ...] = (0.14, 0.1, 0.06),
 ) -> str:
-    cam = make_camera_from_config(
+    cam = make_kerr_camera_from_config(
         m=m,
+        spin=spin,
         r=30.0,
         theta=np.pi / 3.0,
         phi=0.0,
@@ -113,7 +114,7 @@ def phase3_single_ray_benchmark(
         height=24,
     )
     x0 = initial_position_observer(cam)
-    v0 = static_observer_null_direction(cam, 0.0, 0.0)
+    v0 = zamo_null_direction(cam, 0.0, 0.0)
     lines = [
         "Phase 3 benchmark (single Kerr null geodesic, center pixel)",
         f"- M={m}, spin a/M={spin}, observer r=30, theta=60deg",

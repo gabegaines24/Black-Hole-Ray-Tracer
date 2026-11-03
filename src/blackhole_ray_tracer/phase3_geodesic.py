@@ -49,6 +49,19 @@ def kerr_axial_angular_momentum(y: np.ndarray, m: float, spin: float) -> float:
     g = kerr_metric_matrix(r, th, m, spin)
     return float(g[I_PH, I_PH] * vph + g[I_T, I_PH] * vt)
 
+def kerr_carter_constant(y: np.ndarray, m: float, spin: float) -> float:
+    """Return null Carter constant Q for a Kerr Boyer–Lindquist state."""
+    _, r, th, _, _, _, vth, _ = (float(x) for x in y)
+    g = kerr_metric_matrix(r, th, m, spin)
+    energy = kerr_killing_energy(y, m, spin)
+    angular_momentum = kerr_axial_angular_momentum(y, m, spin)
+    sin_th = math.sin(th)
+    p_theta = float(g[2, 2]) * vth
+    return p_theta * p_theta + math.cos(th) ** 2 * (
+        angular_momentum * angular_momentum / (sin_th * sin_th)
+        - (m * spin * energy) ** 2
+    )
+
 
 def renormalize_kerr_momentum_from_null_constraint(
     y: np.ndarray, m: float, spin: float, preserve_vr_sign: bool = True
@@ -100,11 +113,20 @@ def trace_kerr_null_geodesic(
     r_samples: list[float] = []
     t_samples: list[float] = []
     theta_samples: list[float] = []
+    vt_samples: list[float] = []
+    vphi_samples: list[float] = []
     status = RayStatus.MAX_STEPS
     termination_r = float("nan")
     termination_lambda = 0.0
     steps_taken = 0
     lam = 0.0
+    stride = max(sample_stride, 1)
+    if store_samples and all(math.isfinite(float(value)) for value in y):
+        r_samples.append(float(y[1]))
+        t_samples.append(float(y[0]))
+        theta_samples.append(float(y[2]))
+        vt_samples.append(float(y[4]))
+        vphi_samples.append(float(y[7]))
 
     for step_idx in range(max_steps):
         t, r, th, ph, vt, vr, vth, vph = (float(x) for x in y)
@@ -125,16 +147,21 @@ def trace_kerr_null_geodesic(
             steps_taken = step_idx
             break
         r_min = min(r_min, r)
-        if store_samples and (step_idx % max(sample_stride, 1) == 0):
-            r_samples.append(r)
-            t_samples.append(t)
-            theta_samples.append(th)
 
         y = rk4_step(null_geodesic_kerr_first_order, lam, y, dlambda, m, spin)
         if step_idx % 4 == 0:
             y = renormalize_kerr_momentum_from_null_constraint(y, m, spin)
         lam += dlambda
         steps_taken = step_idx + 1
+
+        if store_samples and all(math.isfinite(float(value)) for value in y):
+            post_terminal = y[1] < r_cap or y[1] > r_escape
+            if steps_taken % stride == 0 or post_terminal:
+                r_samples.append(float(y[1]))
+                t_samples.append(float(y[0]))
+                theta_samples.append(float(y[2]))
+                vt_samples.append(float(y[4]))
+                vphi_samples.append(float(y[7]))
     else:
         termination_r = float(y[1]) if len(y) > 1 else float("nan")
         termination_lambda = lam
@@ -149,6 +176,8 @@ def trace_kerr_null_geodesic(
         r_samples = [float(y[1])]
         t_samples = [float(y[0])]
         theta_samples = [float(y[2])]
+        vt_samples = [float(y[4])]
+        vphi_samples = [float(y[7])]
     r_min = r_min if math.isfinite(r_min) else float("nan")
 
     return GeodesicTraceResult(
@@ -160,5 +189,7 @@ def trace_kerr_null_geodesic(
         r_samples=r_samples,
         t_samples=t_samples,
         theta_samples=theta_samples,
+        vt_samples=vt_samples,
+        vphi_samples=vphi_samples,
         r_min=r_min,
     )

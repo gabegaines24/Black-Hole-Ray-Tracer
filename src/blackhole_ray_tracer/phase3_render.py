@@ -5,29 +5,30 @@ from __future__ import annotations
 import numpy as np
 
 from .phase1 import RayStatus
-from .phase2_camera import (
-    initial_position_observer,
-    make_camera_from_config,
-    static_observer_null_direction,
-)
 from .phase2_disk import (
-    detect_equatorial_crossing,
+    detect_equatorial_crossing_state,
     disk_color_at_r,
     disk_hit_from_equatorial_crossing,
 )
 from .phase2_render import _sky_rgb_from_direction
+from .phase3_camera import (
+    initial_position_observer,
+    make_kerr_camera_from_config,
+    zamo_null_direction,
+)
 from .phase3_geodesic import trace_kerr_null_geodesic
+from .phase2_types import RenderStats
 from .phase3_types import KerrRenderConfig
 
 
-def render_kerr_image(cfg: KerrRenderConfig) -> tuple[np.ndarray, dict[str, float]]:
-    """Return RGB float32 (H, W, 3) and stats for a Kerr pinhole render."""
+def render_kerr_image(cfg: KerrRenderConfig) -> tuple[np.ndarray, RenderStats]:
     h, w = cfg.height, cfg.width
     rgb = np.zeros((h, w, 3), dtype=np.float32)
     n_cap = n_esc = n_other = 0
 
-    cam = make_camera_from_config(
+    cam = make_kerr_camera_from_config(
         m=cfg.m,
+        spin=cfg.spin,
         r=cfg.r_observer,
         theta=cfg.observer_theta,
         phi=cfg.observer_phi,
@@ -43,7 +44,7 @@ def render_kerr_image(cfg: KerrRenderConfig) -> tuple[np.ndarray, dict[str, floa
         for i in range(w):
             sx = 2.0 * (i + 0.5) / w - 1.0
             sy = 1.0 - 2.0 * (j + 0.5) / h
-            v0 = static_observer_null_direction(cam, sx, sy)
+            v0 = zamo_null_direction(cam, sx, sy)
             res = trace_kerr_null_geodesic(
                 x0,
                 v0,
@@ -59,15 +60,21 @@ def render_kerr_image(cfg: KerrRenderConfig) -> tuple[np.ndarray, dict[str, floa
 
             disk_drawn = False
             if disk is not None and status != RayStatus.CAPTURED and res.theta_samples:
-                found, r_cross = detect_equatorial_crossing(
-                    res.theta_samples, res.r_samples
+                crossing = detect_equatorial_crossing_state(
+                    res.theta_samples, res.r_samples, res.vt_samples, res.vphi_samples
                 )
-                if found:
+                if crossing is not None:
                     dh = disk_hit_from_equatorial_crossing(
-                        r_cross, disk, cfg.m, vt=float(v0[0]), vph=float(v0[3])
+                        crossing.r_cross,
+                        disk,
+                        cfg.m,
+                        vt=crossing.vt_cross,
+                        vph=crossing.vph_cross,
                     )
                     if dh.hit:
-                        rgb[j, i, :] = disk_color_at_r(r_cross, dh.z_factor, disk)
+                        rgb[j, i, :] = disk_color_at_r(
+                            crossing.r_cross, dh.z_factor, disk
+                        )
                         n_esc += 1
                         disk_drawn = True
 

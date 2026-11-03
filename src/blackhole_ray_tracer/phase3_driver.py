@@ -6,7 +6,7 @@ import argparse
 from dataclasses import replace
 
 from .phase1_image import write_ppm_rgb
-from .phase2_types import DiskConfig
+from .phase2_disk import disk_config_for_mass_spin
 from .phase3_render import render_kerr_image
 from .phase3_report import format_phase3_report, render_config_from_preset
 from .phase3_types import KerrRenderConfig
@@ -62,7 +62,7 @@ def main() -> None:
             args.preset, m=args.m, spin=args.spin, sky_mode=args.sky
         )
         if args.disk:
-            cfg = replace(cfg, disk=DiskConfig())
+            cfg = replace(cfg, disk=disk_config_for_mass_spin(args.m, args.spin))
     else:
         cfg = KerrRenderConfig(
             width=args.width,
@@ -76,7 +76,7 @@ def main() -> None:
             max_steps=args.max_steps,
             r_escape=args.r_escape,
             sky_mode=args.sky,
-            disk=DiskConfig() if args.disk else None,
+            disk=disk_config_for_mass_spin(args.m, args.spin) if args.disk else None,
         )
 
     rgb, stats = render_kerr_image(cfg)
