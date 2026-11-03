@@ -85,16 +85,20 @@ def batch_trace_fn(tmp_path_factory: pytest.TempPathFactory):
     fn = lib.bh_rt_schwarzschild_phase2_batch_trace
     fn.argtypes = [
         ctypes.POINTER(ctypes.c_double),  # y0
-        ctypes.c_int,                     # n
+        ctypes.c_int32,                     # n
         ctypes.c_double,                  # m
         ctypes.c_double,                  # dlambda
-        ctypes.c_int,                     # max_steps
+        ctypes.c_int32,                     # max_steps
         ctypes.c_double,                  # r_escape
         ctypes.c_double,                  # r_horizon_epsilon
-        ctypes.POINTER(ctypes.c_int),     # out_status
-        ctypes.POINTER(ctypes.c_int),     # out_steps_taken
+        ctypes.POINTER(ctypes.c_int32),     # out_status
+        ctypes.POINTER(ctypes.c_int32),     # out_steps_taken
         ctypes.POINTER(ctypes.c_double),  # out_termination_r
         ctypes.POINTER(ctypes.c_double),  # out_r_min
+        ctypes.POINTER(ctypes.c_int32),     # out_disk_hit
+        ctypes.POINTER(ctypes.c_double),  # out_disk_r_cross
+        ctypes.POINTER(ctypes.c_double),  # out_disk_vt
+        ctypes.POINTER(ctypes.c_double),  # out_disk_vph
     ]
     fn.restype = None
     return fn
@@ -135,12 +139,17 @@ def _call_c_batch(fn, y0: np.ndarray, m: float, dlambda: float, max_steps: int,
     n = len(y0)
     flat = np.ascontiguousarray(y0, dtype=np.float64).ravel()
     c_y0 = (ctypes.c_double * len(flat))(*flat.tolist())
-    c_status  = (ctypes.c_int * n)()
-    c_steps   = (ctypes.c_int * n)()
+    c_status  = (ctypes.c_int32 * n)()
+    c_steps   = (ctypes.c_int32 * n)()
     c_term_r  = (ctypes.c_double * n)()
     c_r_min   = (ctypes.c_double * n)()
+    c_disk_hit = (ctypes.c_int32 * n)()
+    c_disk_r   = (ctypes.c_double * n)()
+    c_disk_vt  = (ctypes.c_double * n)()
+    c_disk_vph = (ctypes.c_double * n)()
     fn(c_y0, n, m, dlambda, max_steps, r_escape, r_horizon_epsilon,
-       c_status, c_steps, c_term_r, c_r_min)
+       c_status, c_steps, c_term_r, c_r_min,
+       c_disk_hit, c_disk_r, c_disk_vt, c_disk_vph)
     return (
         np.array(list(c_status), dtype=np.int32),
         np.array(list(c_steps),  dtype=np.int32),

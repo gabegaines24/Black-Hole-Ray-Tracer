@@ -45,7 +45,7 @@ double bh_rt_p2_christoffel(int mu, int a, int b, double r, double th,
     if (a == I_T && b == I_T)
       return m * ff / r2;
     if (a == I_R && b == I_R)
-      return m / (r2 * ff);
+      return -m / (r2 * ff);
     if (a == I_TH && b == I_TH)
       return -r * ff;
     if (a == I_PH && b == I_PH)
@@ -122,7 +122,7 @@ void bh_rt_p2_renormalize_vr(double *y, double m) {
 /* ── public single-ray API ────────────────────────────────────────────────── */
 
 void bh_rt_schwarzschild_phase2_trace(const double *y0, double m, double dlambda,
-                                      int max_steps, double r_escape,
+                                      int32_t max_steps, double r_escape,
                                       double r_horizon_epsilon,
                                       bh_rt_phase2_trace_result *out) {
   double y[BH_RT_P2_N_STATE];
@@ -144,11 +144,11 @@ void bh_rt_schwarzschild_phase2_trace(const double *y0, double m, double dlambda
   int steps_taken = 0;
   int broke = 0;
 
-  for (int step_idx = 0; step_idx < max_steps; ++step_idx) {
+  for (int32_t step_idx = 0; step_idx < max_steps; ++step_idx) {
     double r = y[1];
     if (!bh_rt_p2_all_finite(y)) {
       status = BH_RT_STATUS_NUMERICAL_ERROR;
-      termination_r = r;
+      termination_r = NAN;
       termination_lambda = lam;
       steps_taken = step_idx;
       broke = 1;

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from blackhole_ray_tracer.native_phase2 import (
+    MAX_NATIVE_BATCH_RAYS,
     batch_native_available,
     native_phase2_available,
     ray_status_array_from_native,
@@ -59,6 +60,81 @@ def test_native_phase2_parity_optional() -> None:
         assert math.isnan(float(nt["r_min"]))
     else:
         assert math.isclose(float(nt["r_min"]), py.r_min, rel_tol=0.0, abs_tol=1e-9)
+
+
+def test_native_batch_rejects_wrong_shape() -> None:
+    if not batch_native_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase2 not installed")
+    with pytest.raises(ValueError, match=r"shape \(N, 8\)"):
+        schwarzschild_phase2_batch_native(
+            np.zeros(8, dtype=np.float64),
+            m=1.0,
+            dlambda=0.1,
+            max_steps=10,
+            r_escape=80.0,
+        )
+
+
+def test_native_scalar_marshalling_normalizes_dtype_and_contiguity() -> None:
+    if not native_phase2_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase2 not installed")
+    backing = np.zeros(16, dtype=np.float32)
+    y0 = backing[::2]
+    y0[1] = 30.0
+    y0[2] = np.pi / 2.0
+    y0[4] = 1.0
+    result = schwarzschild_phase2_trace_native(
+        y0, m=1.0, dlambda=0.1, max_steps=0, r_escape=80.0
+    )
+    assert int(result["status"]) == 2
+
+
+def test_native_scalar_rejects_wrong_shape() -> None:
+    if not native_phase2_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase2 not installed")
+    with pytest.raises(ValueError, match=r"shape \(8,\)"):
+        schwarzschild_phase2_trace_native(
+            np.zeros((2, 4), dtype=np.float64),
+            m=1.0,
+            dlambda=0.1,
+            max_steps=1,
+            r_escape=80.0,
+        )
+
+
+def test_native_batch_marshalling_empty_and_output_dtypes() -> None:
+    if not batch_native_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase2 not installed")
+    backing = np.zeros((4, 16), dtype=np.float32)
+    batch = backing[:, ::2]
+    result = schwarzschild_phase2_batch_native(
+        batch, m=1.0, dlambda=0.1, max_steps=0, r_escape=80.0
+    )
+    assert result["status"].shape == (4,)
+    assert result["status"].dtype == np.dtype(np.int32)
+    assert result["steps_taken"].dtype == np.dtype(np.int32)
+    assert result["termination_r"].dtype == np.dtype(np.float64)
+    assert result["disk_hit"].dtype == np.dtype(np.int32)
+
+    empty = schwarzschild_phase2_batch_native(
+        np.empty((0, 8), dtype=np.float64),
+        m=1.0,
+        dlambda=0.1,
+        max_steps=1,
+        r_escape=80.0,
+    )
+    assert empty["status"].shape == (0,)
+    assert empty["status"].dtype == np.dtype(np.int32)
+
+
+def test_native_batch_rejects_oversized_input() -> None:
+    if not batch_native_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase2 not installed")
+    oversized = np.empty((MAX_NATIVE_BATCH_RAYS + 1, 8), dtype=np.float64)
+    with pytest.raises(ValueError, match="maximum supported batch size"):
+        schwarzschild_phase2_batch_native(
+            oversized, m=1.0, dlambda=0.1, max_steps=1, r_escape=80.0
+        )
 
 
 def test_native_phase2_batch_parity_4x4() -> None:

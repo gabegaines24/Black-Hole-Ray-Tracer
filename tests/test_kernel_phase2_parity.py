@@ -9,7 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
-from ctypes import Structure, byref, c_double, c_int
+from ctypes import Structure, byref, c_double, c_int32
 from pathlib import Path
 
 import numpy as np
@@ -30,9 +30,9 @@ INCLUDE = KERNEL / "include"
 
 class Phase2TraceResult(Structure):
     _fields_ = (
-        ("status", c_int),
-        ("steps_taken", c_int),
-        ("max_steps", c_int),
+        ("status", c_int32),
+        ("steps_taken", c_int32),
+        ("max_steps", c_int32),
         ("termination_r", c_double),
         ("termination_lambda", c_double),
         ("r_min", c_double),
@@ -107,7 +107,7 @@ def phase2_trace_fn(tmp_path_factory: pytest.TempPathFactory):
         ctypes.POINTER(c_double),
         c_double,
         c_double,
-        c_int,
+        c_int32,
         c_double,
         c_double,
         ctypes.POINTER(Phase2TraceResult),
@@ -142,12 +142,43 @@ def _run_both(
         arr,
         c_double(m),
         c_double(dlambda),
-        c_int(max_steps),
+        c_int32(max_steps),
         c_double(r_escape),
         c_double(r_horizon_epsilon),
         byref(out),
     )
     return py, out
+
+
+@pytest.mark.parametrize(
+    "y0,max_steps,expected",
+    [
+        (np.array([0.0, 2.0, np.pi / 2.0, 0.0, 1.0, 0.0, 0.0, 0.0]), 10, RayStatus.CAPTURED),
+        (np.array([0.0, 81.0, np.pi / 2.0, 0.0, 1.0, 0.0, 0.0, 0.0]), 10, RayStatus.ESCAPED),
+        (np.array([0.0, 30.0, np.pi / 2.0, 0.0, 1.0, 0.0, 0.0, 0.0]), 0, RayStatus.MAX_STEPS),
+        (np.array([0.0, 30.0, np.pi / 2.0, 0.0, np.nan, 0.0, 0.0, 0.0]), 10, RayStatus.NUMERICAL_ERROR),
+    ],
+)
+def test_phase2_parity_terminal_statuses(
+    phase2_trace_fn: Callable[..., None],
+    y0: np.ndarray,
+    max_steps: int,
+    expected: RayStatus,
+) -> None:
+    py, c = _run_both(
+        phase2_trace_fn,
+        m=1.0,
+        y0=y0,
+        dlambda=0.1,
+        max_steps=max_steps,
+        r_escape=80.0,
+    )
+    assert py.status == expected
+    assert c.status == STATUS_PY_TO_C[expected]
+    assert py.steps_taken == c.steps_taken
+    _close(py.termination_r, c.termination_r, atol=1e-9)
+    _close(py.termination_lambda, c.termination_lambda, atol=1e-9)
+    _close(py.r_min, c.r_min, atol=1e-9)
 
 
 def test_phase2_parity_center_pixel(phase2_trace_fn: Callable[..., None]) -> None:
