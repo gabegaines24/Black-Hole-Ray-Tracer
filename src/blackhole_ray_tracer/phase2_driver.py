@@ -62,18 +62,7 @@ def main() -> None:
     parser.add_argument(
         "--cuda",
         action="store_true",
-        help="Use GPU batch kernel (libbh_rt_phase2_cuda.so); requires nvcc build",
-    )
-    parser.add_argument(
-        "--ml",
-        action="store_true",
-        help="Use ML surrogate for far-field rays (RuntimeGate)",
-    )
-    parser.add_argument(
-        "--ml-model-path",
-        type=str,
-        default=None,
-        help="Path to trained surrogate .npz (with --ml)",
+        help="Use CUDA batch kernel; requires BLACKHOLE_BUILD_CUDA=1 build or BLACKHOLE_CUDA_LIB",
     )
     parser.add_argument(
         "--disk",
@@ -92,8 +81,11 @@ def main() -> None:
 
     if args.preset is not None:
         cfg = render_config_from_preset(
-            args.preset, m=args.m, sky_mode=args.sky, use_native_phase2=args.native,
-            use_cuda_batch=args.cuda, use_ml_surrogate=args.ml, ml_model_path=args.ml_model_path,
+            args.preset,
+            m=args.m,
+            sky_mode=args.sky,
+            use_native_phase2=args.native,
+            use_cuda_phase2=args.cuda,
         )
         if args.disk:
             cfg = Phase2RenderConfig(
@@ -110,9 +102,7 @@ def main() -> None:
                 r_horizon_epsilon=cfg.r_horizon_epsilon,
                 sky_mode=cfg.sky_mode,
                 use_native_phase2=cfg.use_native_phase2,
-                use_cuda_batch=cfg.use_cuda_batch,
-                use_ml_surrogate=cfg.use_ml_surrogate,
-                ml_model_path=cfg.ml_model_path,
+                use_cuda_phase2=cfg.use_cuda_phase2,
                 disk=DiskConfig(),
             )
     else:
@@ -127,9 +117,7 @@ def main() -> None:
             r_escape=args.r_escape,
             sky_mode=args.sky,
             use_native_phase2=args.native,
-            use_cuda_batch=args.cuda,
-            use_ml_surrogate=args.ml,
-            ml_model_path=args.ml_model_path,
+            use_cuda_phase2=args.cuda,
             disk=DiskConfig() if args.disk else None,
         )
     rgb, stats = render_schwarzschild_3d_image(cfg)

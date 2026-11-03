@@ -57,10 +57,10 @@ int main(void) {
       y0, N_RAYS, m, 0.1, 4000, 80.0, 1e-3,
       status, steps, term_r, r_min, eq_r_cross);
 
-  printf("BH_PHASE2_BATCH_RESULT  ray  status         steps  term_r       r_min\n");
+  printf("BH_PHASE2_BATCH_RESULT  ray  status         steps  term_r       r_min       eq_cross\n");
   for (int i = 0; i < N_RAYS; ++i) {
-    printf("BH_PHASE2_BATCH_RESULT  %3d  %-14s %5d  %11.4f  %11.4f\n",
-           i, status_name(status[i]), steps[i], term_r[i], r_min[i]);
+    printf("BH_PHASE2_BATCH_RESULT  %3d  %-14s %5d  %11.4f  %11.4f  %11.4f\n",
+           i, status_name(status[i]), steps[i], term_r[i], r_min[i], eq_r_cross[i]);
   }
   return 0;
 }
