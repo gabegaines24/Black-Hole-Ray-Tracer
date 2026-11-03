@@ -33,13 +33,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y build-essential
-          BLACKHOLE_BUILD_NATIVE=1 uv sync --extra dev
+          BLACKHOLE_BUILD_NATIVE=1 uv sync --dev
         env:
           BLACKHOLE_BUILD_NATIVE: "1"
 
       - name: Install (without native extension)
         if: runner.os != 'Linux'
-        run: uv sync --extra dev
+        run: uv sync --dev
 
       - name: Run tests
         run: uv run pytest -q --tb=short
@@ -82,7 +82,7 @@ jobs:
 
       - name: Verify pip-installable CUDA build (setup.py)
         run: |
-          BLACKHOLE_BUILD_CUDA=1 uv sync --extra dev
+          BLACKHOLE_BUILD_CUDA=1 uv sync --dev
           test -f build/libbh_rt_phase2_cuda.so && echo "setup.py CUDA build OK"
 
       - name: Verify shared library exists

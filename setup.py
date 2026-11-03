@@ -20,7 +20,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from setuptools import Command, setup
+from setuptools import Command, Extension, setup
 from setuptools.command.build import build as _build
 from setuptools.command.build_py import build_py as _build_py
 
@@ -168,10 +168,11 @@ cmdclass: dict[str, type] = {
 }
 
 if should_build_native():
-    from pybind11.setup_helpers import Pybind11Extension, build_ext
+    from pybind11 import get_include
+    from setuptools.command.build_ext import build_ext
 
     ext_modules = [
-        Pybind11Extension(
+        Extension(
             "blackhole_ray_tracer._native_phase2",
             [
                 src("bridge", "module_phase2.cpp"),
@@ -181,8 +182,12 @@ if should_build_native():
             ],
             include_dirs=[
                 src("kernel", "include"),
+                get_include(),
             ],
-            cxx_std=17,
+            libraries=(
+                ["c++", "c++abi"] if sys.platform == "darwin" else ["stdc++"]
+            ),
+            language="c++",
         ),
     ]
     cmdclass["build_ext"] = build_ext
