@@ -23,7 +23,7 @@ import math
 from pathlib import Path
 
 __all__ = ["RuntimeGate"]
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -105,12 +105,12 @@ class RuntimeGate:
 
     def _infer_surrogate(self, y0: np.ndarray, m: float) -> SurrogateResult:
         """Call the surrogate MLP for a single ray."""
-        from ml.surrogate import predict_batch
+        from ml.surrogate import MLPWeights, predict_batch
 
         r, th, phi_, vr, vth, vph = (float(y0[k]) for k in (1, 2, 3, 5, 6, 7))
         x_raw = np.array([[r, th, phi_, vr, vth, vph]], dtype=np.float32)
         x_norm = normalize_inputs(x_raw)
-        pred = predict_batch(self._weights, x_norm)[0]
+        pred = predict_batch(cast(MLPWeights, self._weights), x_norm)[0]
         status = int(round(float(pred[0])))
         if status not in (STATUS_CAPTURED, STATUS_ESCAPED, STATUS_MAX_STEPS, STATUS_NUMERIC):
             status = STATUS_MAX_STEPS

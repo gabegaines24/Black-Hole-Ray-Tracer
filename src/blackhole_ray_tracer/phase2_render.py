@@ -17,7 +17,7 @@ from .phase2_disk import (
     disk_hit_from_equatorial_crossing,
 )
 from .phase2_geodesic import trace_null_geodesic_3d
-from .phase2_types import Phase2RenderConfig
+from .phase2_types import Phase2RenderConfig, RenderStats
 from .native_phase2 import (
     batch_native_available,
     native_phase2_available,
@@ -44,12 +44,11 @@ def _sky_rgb_from_direction(
 
 def render_schwarzschild_3d_image(
     cfg: Phase2RenderConfig,
-) -> tuple[np.ndarray, dict[str, float]]:
+) -> tuple[np.ndarray, RenderStats]:
     """Return RGB float32 (H, W, 3) in [0,1] and simple stats dict.
 
-    When ``cfg.use_cuda_batch`` is True and ``libbh_rt_phase2_cuda.so`` is loadable,
-    the GPU batch kernel is used.  When ``cfg.use_native_phase2`` is True the native
-    C CPU batch kernel is used (one call for the entire pixel grid).
+    When ``cfg.use_native_phase2`` is True the native C batch kernel is used
+    (one call for the entire pixel grid), replacing the Python ray-by-ray loop.
 
     When ``cfg.supersample > 1`` renders at ``(W*s, H*s)`` then box-averages
     down to ``(W, H)`` for anti-aliasing.
@@ -65,14 +64,23 @@ def render_schwarzschild_3d_image(
 
     h, w = cfg.height, cfg.width
 
-    if cfg.use_cuda_batch and not cuda_batch_available():
+    use_cuda_requested = cfg.use_cuda_batch or cfg.use_cuda_phase2
+    if (
+        use_cuda_requested
+        and not cuda_batch_available()
+        and not cfg.use_native_phase2
+    ):
         raise RuntimeError(
-            "Phase2RenderConfig.use_cuda_batch is True but CUDA library "
-            "`libbh_rt_phase2_cuda.so` was not found. Build with "
-            "`make -C kernel/cuda cuda_batch` or set BLACKHOLE_CUDA_LIB."
+            "Phase2RenderConfig CUDA batch mode is enabled but the CUDA batch library "
+            "is not available. Build with BLACKHOLE_BUILD_CUDA=1 uv sync (requires nvcc), "
+            "make -C kernel/cuda cuda_batch, or set BLACKHOLE_CUDA_LIB=<path>."
         )
 
-    if cfg.use_native_phase2 and not native_phase2_available() and not cfg.use_cuda_batch:
+    if (
+        cfg.use_native_phase2
+        and not native_phase2_available()
+        and not (use_cuda_requested and cuda_batch_available())
+    ):
         raise RuntimeError(
             "Phase2RenderConfig.use_native_phase2 is True but extension "
             "`blackhole_ray_tracer._native_phase2` is not available. "
@@ -83,13 +91,16 @@ def render_schwarzschild_3d_image(
     n_cap = n_esc = n_other = 0
     backend = "python"
 
-    use_cuda = cfg.use_cuda_batch and cuda_batch_available()
-    use_batch = cfg.use_native_phase2 and batch_native_available() and not use_cuda
+    use_cuda_batch = use_cuda_requested and cuda_batch_available()
+    use_cpu_batch = (
+        cfg.use_native_phase2 and batch_native_available() and not use_cuda_batch
+    )
 
-    if use_cuda or use_batch:
-        backend = "cuda_batch" if use_cuda else "native_batch"
-        y0 = build_camera_y0(cfg)
-        if use_cuda:
+    if use_cuda_batch or use_cpu_batch:
+        # ── batched path (CUDA or native CPU) ────────────────────────────────
+        backend = "cuda_batch" if use_cuda_batch else "native_batch"
+        y0 = build_camera_y0(cfg)   # (N, 8)
+        if use_cuda_batch:
             result = schwarzschild_phase2_batch_cuda(
                 y0,
                 m=cfg.m,

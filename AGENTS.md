@@ -6,7 +6,7 @@ Human and AI collaborators: read **`docs/OVERVIEW.md`** and **`docs/ROADMAP.md`*
 
 ## Quick rules
 
-1. **Truth about layout:** `kernel/`, `bridge/`, and `ml/` contain implemented source — verify file contents before claiming a feature exists. Kerr C kernel: `bh_rt_kerr_phase3_*`; ML is scaffold-only in the render path.
+1. **Truth about layout:** `kernel/`, `bridge/`, `ml/` are **planned** until source files appear there — do not describe them as implemented.
 2. **Phases:** Keep `phase1` (equatorial / shared RK4) and `phase2` (3D prototype) modular; extend via `phaseN_*`, `kernel/`, or documented APIs.
 3. **Shared integrator:** Prefer `phase1.rk4_step` for Python RK4 unless migrating to C.
 4. **Quality bar:** Run `uv run pytest` after substantive Python changes; `uv run ruff check src tests` when convenient.

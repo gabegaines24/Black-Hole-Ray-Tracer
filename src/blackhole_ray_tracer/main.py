@@ -92,7 +92,7 @@ def main() -> None:
     parser.add_argument(
         "--phase2-cuda",
         action="store_true",
-        help="With --phase2-render: use GPU batch kernel (libbh_rt_phase2_cuda.so); requires nvcc build.",
+        help="With --phase2-render: trace rays via CUDA batch kernel; requires nvcc build.",
     )
     parser.add_argument(
         "--phase2-disk",
@@ -146,7 +146,7 @@ def main() -> None:
                 m=1.0,
                 sky_mode="gradient",
                 use_native_phase2=args.phase2_native,
-                use_cuda_batch=args.phase2_cuda,
+                use_cuda_phase2=args.phase2_cuda,
             )
             if args.phase2_disk:
                 cfg = Phase2RenderConfig(
@@ -163,7 +163,7 @@ def main() -> None:
                     r_horizon_epsilon=cfg.r_horizon_epsilon,
                     sky_mode=cfg.sky_mode,
                     use_native_phase2=cfg.use_native_phase2,
-                    use_cuda_batch=cfg.use_cuda_batch,
+                    use_cuda_phase2=cfg.use_cuda_phase2,
                     disk=DiskConfig(),
                 )
         else:
@@ -174,7 +174,7 @@ def main() -> None:
                 dlambda=0.06,
                 max_steps=8000,
                 use_native_phase2=args.phase2_native,
-                use_cuda_batch=args.phase2_cuda,
+                use_cuda_phase2=args.phase2_cuda,
                 disk=DiskConfig() if getattr(args, "phase2_disk", False) else None,
                 supersample=getattr(args, "supersample", 1),
             )

@@ -158,9 +158,6 @@ class TestConservedQuantities:
         if len(res.r_samples) < 2:
             pytest.skip("too few samples")
 
-        # Reconstruct final y roughly (last sample)
-        r_final = res.r_samples[-1]
-        th_final = res.theta_samples[-1]
         # We don't have v from samples alone, so just check E/L from the
         # initial renormalization didn't already break conservation badly.
         # The strict test is: integrate forward and compare E at start vs computed.
