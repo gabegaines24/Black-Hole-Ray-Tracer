@@ -1,84 +1,161 @@
-"""Kerr null geodesic integration (Boyer-Lindquist, affine parameter) using RK4.
-
-Mirrors `phase2_geodesic.trace_null_geodesic_3d` but for the full Kerr metric.
-Setting spin `a=0` gives numerically identical results to the Schwarzschild tracer.
-"""
+"""Kerr null geodesic integration in Boyer-Lindquist coordinates."""
 
 from __future__ import annotations
 
 import math
 
-__all__ = ["trace_kerr_null_geodesic"]
-
 import numpy as np
 
 from .phase1 import RayStatus, rk4_step
 from .phase2_types import GeodesicTraceResult
+from .phase2_geodesic import trace_null_geodesic_3d
 from .phase3_christoffel import (
-    kerr_conserved,
-    kerr_null_geodesic_rhs,
-    kerr_null_invariant,
-    renormalize_vr_kerr,
-    kerr_delta,
+    I_PH,
+    I_T,
+    kerr_metric_matrix,
+    kerr_outer_horizon,
+    null_geodesic_kerr_first_order,
 )
+
+
+def metric_invariant_kerr(
+    t: float,
+    r: float,
+    th: float,
+    ph: float,
+    vt: float,
+    vr: float,
+    vth: float,
+    vph: float,
+    m: float,
+    spin: float,
+) -> float:
+    """Return g_mu_nu v^mu v^nu (zero for a null ray)."""
+    del t, ph
+    g = kerr_metric_matrix(r, th, m, spin)
+    v = np.array([vt, vr, vth, vph], dtype=float)
+    return float(v @ g @ v)
+
+
+def kerr_killing_energy(y: np.ndarray, m: float, spin: float) -> float:
+    """Return E = -p_t for a Kerr geodesic state."""
+    _, r, th, _, vt, _, _, vph = (float(x) for x in y)
+    g = kerr_metric_matrix(r, th, m, spin)
+    return float(-g[I_T, I_T] * vt - g[I_T, I_PH] * vph)
+
+
+def kerr_axial_angular_momentum(y: np.ndarray, m: float, spin: float) -> float:
+    """Return L = p_phi for a Kerr geodesic state."""
+    _, r, th, _, vt, _, _, vph = (float(x) for x in y)
+    g = kerr_metric_matrix(r, th, m, spin)
+    return float(g[I_PH, I_PH] * vph + g[I_T, I_PH] * vt)
+
+def kerr_carter_constant(y: np.ndarray, m: float, spin: float) -> float:
+    """Return null Carter constant Q for a Kerr Boyer–Lindquist state."""
+    _, r, th, _, _, _, vth, _ = (float(x) for x in y)
+    g = kerr_metric_matrix(r, th, m, spin)
+    energy = kerr_killing_energy(y, m, spin)
+    angular_momentum = kerr_axial_angular_momentum(y, m, spin)
+    sin_th = math.sin(th)
+    p_theta = float(g[2, 2]) * vth
+    return p_theta * p_theta + math.cos(th) ** 2 * (
+        angular_momentum * angular_momentum / (sin_th * sin_th)
+        - (m * spin * energy) ** 2
+    )
+
+
+def renormalize_kerr_momentum_from_null_constraint(
+    y: np.ndarray, m: float, spin: float, preserve_vr_sign: bool = True
+) -> np.ndarray:
+    r"""Enforce g(v,v)=0 by adjusting v^r while preserving its sign."""
+    _, r, th, _, vt, vr, vth, vph = (float(x) for x in y)
+    g = kerr_metric_matrix(r, th, m, spin)
+    g_rr = float(g[1, 1])
+    if abs(g_rr) < 1e-30 or not math.isfinite(g_rr):
+        return y
+    other = (
+        g[0, 0] * vt * vt
+        + 2.0 * g[0, 3] * vt * vph
+        + g[2, 2] * vth * vth
+        + g[3, 3] * vph * vph
+    )
+    inner = -float(other) / g_rr
+    if inner < 0.0 and inner > -1e-8:
+        inner = 0.0
+    if inner < 0.0 or not math.isfinite(inner):
+        return y
+    sign = 1.0 if vr >= 0.0 else -1.0
+    if not preserve_vr_sign:
+        sign = 1.0
+    y2 = y.copy()
+    y2[5] = sign * math.sqrt(inner)
+    return y2
 
 
 def trace_kerr_null_geodesic(
     x0: np.ndarray,
     v0: np.ndarray,
     m: float,
-    a: float,
-    dlambda: float,
-    max_steps: int,
-    r_escape: float,
+    spin: float | None = None,
+    dlambda: float | None = None,
+    max_steps: int | None = None,
+    r_escape: float | None = None,
     r_horizon_epsilon: float = 1e-3,
     *,
+    a: float | None = None,
     store_samples: bool = True,
     sample_stride: int = 1,
-    monitor_conserved: bool = False,
 ) -> GeodesicTraceResult:
-    """Integrate one Kerr null geodesic.
-
-    Parameters
-    ----------
-    x0 : (4,) array  — initial (t, r, θ, φ)
-    v0 : (4,) array  — initial (v^t, v^r, v^θ, v^φ)
-    m  : black-hole mass (geometric units)
-    a  : spin parameter (|a| ≤ M; a=0 → Schwarzschild)
-    dlambda, max_steps, r_escape, r_horizon_epsilon : integration params
-    store_samples : collect r, t, θ along trajectory
-    monitor_conserved : print E/L drift warnings (debug only)
-
-    Returns
-    -------
-    GeodesicTraceResult  (same type as Phase 2, theta_samples populated)
-    """
-    y = np.concatenate([x0.astype(float), v0.astype(float)])
-    y = renormalize_vr_kerr(y, m, a)
-
-    # Capture radius: outer horizon r_+ = M + √(M²−a²) + ε
-    disc = m * m - a * a
-    r_horizon = m + math.sqrt(max(disc, 0.0))
-    r_cap = r_horizon + r_horizon_epsilon
+    """Trace Kerr null geodesic; ``a`` is dimensional compatibility input."""
+    if a is not None:
+        if m == 0.0:
+            raise ValueError("Mass m must be nonzero when a is provided.")
+        spin_from_a = a / m
+        if spin is not None and spin != spin_from_a:
+            raise ValueError("spin and a must match when both are provided.")
+        spin = spin_from_a
+    if spin is None or dlambda is None or max_steps is None or r_escape is None:
+        raise TypeError("spin/a, dlambda, max_steps, and r_escape are required.")
+    # Equatorial zero-spin rays share Phase 2's exact Schwarzschild stepping path.
+    if spin == 0.0 and abs(float(v0[2])) <= 1e-15:
+        return trace_null_geodesic_3d(
+            x0,
+            v0,
+            m=m,
+            dlambda=dlambda,
+            max_steps=max_steps,
+            r_escape=r_escape,
+            r_horizon_epsilon=r_horizon_epsilon,
+            store_samples=store_samples,
+            sample_stride=sample_stride,
+        )
+    y = np.concatenate([x0.astype(float), v0.astype(float)], axis=0)
+    y = renormalize_kerr_momentum_from_null_constraint(y, m, spin)
+    r_cap = kerr_outer_horizon(m, spin) + r_horizon_epsilon
 
     r_min = float("inf")
     r_samples: list[float] = []
     t_samples: list[float] = []
     theta_samples: list[float] = []
-
+    vt_samples: list[float] = []
+    vphi_samples: list[float] = []
     status = RayStatus.MAX_STEPS
     termination_r = float("nan")
     termination_lambda = 0.0
     steps_taken = 0
-
     lam = 0.0
-    for step_idx in range(max_steps):
-        _, r, th, _, vt, vr, vth, vph = (float(x) for x in y)
+    stride = max(sample_stride, 1)
+    if store_samples and all(math.isfinite(float(value)) for value in y):
+        r_samples.append(float(y[1]))
+        t_samples.append(float(y[0]))
+        theta_samples.append(float(y[2]))
+        vt_samples.append(float(y[4]))
+        vphi_samples.append(float(y[7]))
 
-        if not all(math.isfinite(x) for x in (r, th, vt, vr, vth, vph)):
+    for step_idx in range(max_steps):
+        t, r, th, ph, vt, vr, vth, vph = (float(x) for x in y)
+        if not all(math.isfinite(x) for x in (t, r, th, ph, vt, vr, vth, vph)):
             status = RayStatus.NUMERICAL_ERROR
-            termination_r = r
-            termination_lambda = lam
             steps_taken = step_idx
             break
         if r < r_cap:
@@ -93,36 +170,38 @@ def trace_kerr_null_geodesic(
             termination_lambda = lam
             steps_taken = step_idx
             break
-
         r_min = min(r_min, r)
-        if store_samples and step_idx % max(sample_stride, 1) == 0:
-            r_samples.append(r)
-            t_samples.append(float(y[0]))
-            theta_samples.append(th)
 
-        # RK4 step: pass (m, a) as extra args to the RHS
-        y = rk4_step(kerr_null_geodesic_rhs, lam, y, dlambda, m, a)
-
+        y = rk4_step(null_geodesic_kerr_first_order, lam, y, dlambda, m, spin)
         if step_idx % 4 == 0:
-            y = renormalize_vr_kerr(y, m, a)
-
+            y = renormalize_kerr_momentum_from_null_constraint(y, m, spin)
         lam += dlambda
         steps_taken = step_idx + 1
+
+        if store_samples and all(math.isfinite(float(value)) for value in y):
+            post_terminal = y[1] < r_cap or y[1] > r_escape
+            if steps_taken % stride == 0 or post_terminal:
+                r_samples.append(float(y[1]))
+                t_samples.append(float(y[0]))
+                theta_samples.append(float(y[2]))
+                vt_samples.append(float(y[4]))
+                vphi_samples.append(float(y[7]))
     else:
-        termination_r = float(y[1])
+        termination_r = float(y[1]) if len(y) > 1 else float("nan")
         termination_lambda = lam
 
     if status == RayStatus.MAX_STEPS:
-        termination_r = float(y[1])
+        termination_r = float(y[1]) if len(y) > 1 else float("nan")
         termination_lambda = lam
-        if math.isfinite(float(y[1])):
-            r_min = min(r_min, float(y[1]))
+        r = float(y[1]) if len(y) > 1 else float("nan")
+        r_min = min(r_min, r) if math.isfinite(r) else r_min
 
     if not r_samples and math.isfinite(float(y[1])):
         r_samples = [float(y[1])]
         t_samples = [float(y[0])]
         theta_samples = [float(y[2])]
-
+        vt_samples = [float(y[4])]
+        vphi_samples = [float(y[7])]
     r_min = r_min if math.isfinite(r_min) else float("nan")
 
     return GeodesicTraceResult(
@@ -134,5 +213,7 @@ def trace_kerr_null_geodesic(
         r_samples=r_samples,
         t_samples=t_samples,
         theta_samples=theta_samples,
+        vt_samples=vt_samples,
+        vphi_samples=vphi_samples,
         r_min=r_min,
     )

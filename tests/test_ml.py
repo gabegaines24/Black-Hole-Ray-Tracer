@@ -23,18 +23,17 @@ for _p in [str(_repo_root / "src"), str(_repo_root)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from ml.schema import (
+from ml.schema import (  # noqa: E402
     N_INPUTS,
     N_OUTPUTS,
     R_REF,
     SURROGATE_R_THRESHOLD,
-    V_REF,
     normalize_inputs,
     denormalize_outputs,
 )
-from ml.dataset import generate_dataset
-from ml.surrogate import forward, init_random_weights
-from ml.runtime_gate import RuntimeGate, SurrogateResult
+from ml.dataset import generate_dataset  # noqa: E402
+from ml.surrogate import forward, init_random_weights  # noqa: E402
+from ml.runtime_gate import RuntimeGate, SurrogateResult  # noqa: E402
 
 
 # ── 1. Schema normalisation ────────────────────────────────────────────────────

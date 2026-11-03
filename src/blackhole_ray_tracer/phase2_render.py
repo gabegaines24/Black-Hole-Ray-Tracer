@@ -17,7 +17,7 @@ from .phase2_disk import (
     disk_hit_from_equatorial_crossing,
 )
 from .phase2_geodesic import trace_null_geodesic_3d
-from .phase2_types import Phase2RenderConfig
+from .phase2_types import Phase2RenderConfig, RenderStats
 from .native_phase2 import (
     batch_native_available,
     native_phase2_available,
@@ -26,6 +26,7 @@ from .native_phase2 import (
     schwarzschild_phase2_batch_native,
     schwarzschild_phase2_trace_native,
 )
+from .native_phase2_cuda import cuda_batch_available, schwarzschild_phase2_batch_cuda
 
 
 def _sky_rgb_from_direction(
@@ -43,7 +44,7 @@ def _sky_rgb_from_direction(
 
 def render_schwarzschild_3d_image(
     cfg: Phase2RenderConfig,
-) -> tuple[np.ndarray, dict[str, float]]:
+) -> tuple[np.ndarray, RenderStats]:
     """Return RGB float32 (H, W, 3) in [0,1] and simple stats dict.
 
     When ``cfg.use_native_phase2`` is True the native C batch kernel is used
@@ -63,7 +64,23 @@ def render_schwarzschild_3d_image(
 
     h, w = cfg.height, cfg.width
 
-    if cfg.use_native_phase2 and not native_phase2_available():
+    use_cuda_requested = cfg.use_cuda_batch or cfg.use_cuda_phase2
+    if (
+        use_cuda_requested
+        and not cuda_batch_available()
+        and not cfg.use_native_phase2
+    ):
+        raise RuntimeError(
+            "Phase2RenderConfig CUDA batch mode is enabled but the CUDA batch library "
+            "is not available. Build with BLACKHOLE_BUILD_CUDA=1 uv sync (requires nvcc), "
+            "make -C kernel/cuda cuda_batch, or set BLACKHOLE_CUDA_LIB=<path>."
+        )
+
+    if (
+        cfg.use_native_phase2
+        and not native_phase2_available()
+        and not (use_cuda_requested and cuda_batch_available())
+    ):
         raise RuntimeError(
             "Phase2RenderConfig.use_native_phase2 is True but extension "
             "`blackhole_ray_tracer._native_phase2` is not available. "
@@ -74,20 +91,33 @@ def render_schwarzschild_3d_image(
     n_cap = n_esc = n_other = 0
     backend = "python"
 
-    use_batch = cfg.use_native_phase2 and batch_native_available()
+    use_cuda_batch = use_cuda_requested and cuda_batch_available()
+    use_cpu_batch = (
+        cfg.use_native_phase2 and batch_native_available() and not use_cuda_batch
+    )
 
-    if use_batch:
-        # ── native batch path ────────────────────────────────────────────────
-        backend = "native_batch"
+    if use_cuda_batch or use_cpu_batch:
+        # ── batched path (CUDA or native CPU) ────────────────────────────────
+        backend = "cuda_batch" if use_cuda_batch else "native_batch"
         y0 = build_camera_y0(cfg)   # (N, 8)
-        result = schwarzschild_phase2_batch_native(
-            y0,
-            m=cfg.m,
-            dlambda=cfg.dlambda,
-            max_steps=cfg.max_steps,
-            r_escape=cfg.r_escape,
-            r_horizon_epsilon=cfg.r_horizon_epsilon,
-        )
+        if use_cuda_batch:
+            result = schwarzschild_phase2_batch_cuda(
+                y0,
+                m=cfg.m,
+                dlambda=cfg.dlambda,
+                max_steps=cfg.max_steps,
+                r_escape=cfg.r_escape,
+                r_horizon_epsilon=cfg.r_horizon_epsilon,
+            )
+        else:
+            result = schwarzschild_phase2_batch_native(
+                y0,
+                m=cfg.m,
+                dlambda=cfg.dlambda,
+                max_steps=cfg.max_steps,
+                r_escape=cfg.r_escape,
+                r_horizon_epsilon=cfg.r_horizon_epsilon,
+            )
         statuses = ray_status_array_from_native(result["status"])
         eq_r_cross_arr: np.ndarray | None = result.get("eq_r_cross")
 
