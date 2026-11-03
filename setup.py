@@ -15,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from setuptools import setup
+from setuptools import Extension, setup
 
 ROOT = Path(__file__).resolve().parent
 
@@ -58,10 +58,16 @@ def should_build_native() -> bool:
 ext_modules = []
 cmdclass = {}
 if should_build_native():
-    from pybind11.setup_helpers import Pybind11Extension, build_ext
+    from pybind11 import get_include
+    from setuptools.command.build_ext import build_ext
 
+    native_include_dirs = [
+        src("kernel", "include"),
+        get_include(),
+    ]
+    native_libraries = ["c++", "c++abi"] if sys.platform == "darwin" else ["stdc++"]
     ext_modules = [
-        Pybind11Extension(
+        Extension(
             "blackhole_ray_tracer._native_phase2",
             [
                 src("bridge", "module_phase2.cpp"),
@@ -69,12 +75,11 @@ if should_build_native():
                 src("kernel", "src", "bh_rt_schwarzschild_phase2.c"),
                 src("kernel", "src", "bh_rt_schwarzschild_phase2_batch.c"),
             ],
-            include_dirs=[
-                src("kernel", "include"),
-            ],
-            cxx_std=17,
+            include_dirs=native_include_dirs,
+            libraries=native_libraries,
+            language="c++",
         ),
-        Pybind11Extension(
+        Extension(
             "blackhole_ray_tracer._native_phase3",
             [
                 src("bridge", "module_phase3.cpp"),
@@ -82,10 +87,9 @@ if should_build_native():
                 src("kernel", "src", "bh_rt_kerr_phase3.c"),
                 src("kernel", "src", "bh_rt_kerr_phase3_batch.c"),
             ],
-            include_dirs=[
-                src("kernel", "include"),
-            ],
-            cxx_std=17,
+            include_dirs=native_include_dirs,
+            libraries=native_libraries,
+            language="c++",
         ),
     ]
     cmdclass = {"build_ext": build_ext}
