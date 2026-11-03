@@ -23,15 +23,38 @@ def kerr_spin_a(m: float, spin: float) -> float:
     return spin * m
 
 
-def kerr_sigma(r: float, th: float, m: float, spin: float) -> float:
-    a = kerr_spin_a(m, spin)
+def kerr_sigma(
+    r: float,
+    th: float,
+    m: float | None = None,
+    spin: float | None = None,
+    *,
+    a: float | None = None,
+) -> float:
+    """Return Σ for either dimensional ``a`` or ``(m, spin)`` inputs."""
+    if a is not None:
+        dimensional_a = a
+    elif spin is None:
+        dimensional_a = 0.0 if m is None else m
+    else:
+        if m is None:
+            raise ValueError("Mass m is required with dimensionless spin.")
+        dimensional_a = kerr_spin_a(m, spin)
     c = math.cos(th)
-    return r * r + a * a * c * c
+    return r * r + dimensional_a * dimensional_a * c * c
 
-
-def kerr_delta(r: float, m: float, spin: float) -> float:
-    a = kerr_spin_a(m, spin)
-    return r * r - 2.0 * m * r + a * a
+def kerr_delta(
+    r: float,
+    m: float,
+    spin: float | None = None,
+    *,
+    a: float | None = None,
+) -> float:
+    """Return Δ for either dimensional ``a`` or dimensionless ``spin``."""
+    dimensional_a = a if a is not None else (
+        0.0 if spin is None else kerr_spin_a(m, spin)
+    )
+    return r * r - 2.0 * m * r + dimensional_a * dimensional_a
 
 
 def kerr_outer_horizon(m: float, spin: float) -> float:
@@ -141,10 +164,6 @@ def christoffel_kerr(
     mu: int, a_idx: int, b_idx: int, r: float, th: float, m: float, spin: float
 ) -> float:
     r"""Return symmetric lower pair \Gamma^\mu_{ab} for Kerr BL coordinates."""
-    if abs(spin) < 1e-15:
-        from .phase2_christoffel import christoffel_schwarzschild
-
-        return christoffel_schwarzschild(mu, a_idx, b_idx, r, th, m)
     if not (math.isfinite(r) and math.isfinite(th)):
         return 0.0
     if r <= kerr_outer_horizon(m, spin):
@@ -188,3 +207,57 @@ def null_geodesic_kerr_first_order(
     dpos = np.array([vt, vr, vth, vph], dtype=float)
     dvel = geodesic_acceleration_kerr(y, m, spin)
     return np.concatenate([dpos, dvel])
+
+
+def _dimensional_a_to_spin(m: float, a: float) -> float:
+    if not math.isfinite(m) or m == 0.0:
+        return a
+    return a / m
+
+
+def kerr_conserved(
+    y: np.ndarray | list[float], m: float, a: float
+) -> tuple[float, float]:
+    """Return conserved energy and axial angular momentum for dimensional ``a``."""
+    state = np.asarray(y, dtype=float)
+    _, r, th, _, vt, _, _, vph = (float(value) for value in state)
+    g = kerr_metric_matrix(r, th, m, _dimensional_a_to_spin(m, a))
+    return (
+        float(-g[I_T, I_T] * vt - g[I_T, I_PH] * vph),
+        float(g[I_PH, I_PH] * vph + g[I_T, I_PH] * vt),
+    )
+
+
+def kerr_null_invariant(
+    y: np.ndarray | list[float], m: float, a: float
+) -> float:
+    """Return g(v, v) for a state using dimensional ``a``."""
+    state = np.asarray(y, dtype=float)
+    _, r, th, _, vt, vr, vth, vph = (float(value) for value in state)
+    g = kerr_metric_matrix(r, th, m, _dimensional_a_to_spin(m, a))
+    velocity = np.array([vt, vr, vth, vph], dtype=float)
+    return float(velocity @ g @ velocity)
+
+
+def renormalize_vr_kerr(
+    y: np.ndarray | list[float], m: float, a: float
+) -> np.ndarray:
+    """Adjust ``v^r`` onto the null cone using dimensional ``a``."""
+    from .phase3_geodesic import renormalize_kerr_momentum_from_null_constraint
+
+    state = np.asarray(y, dtype=float)
+    return renormalize_kerr_momentum_from_null_constraint(
+        state, m, _dimensional_a_to_spin(m, a)
+    )
+
+
+def kerr_null_geodesic_rhs(
+    lam: float, y: np.ndarray | list[float], m: float, a: float
+) -> np.ndarray:
+    """Return the first-order RHS using dimensional ``a``."""
+    return null_geodesic_kerr_first_order(
+        lam,
+        np.asarray(y, dtype=float),
+        m,
+        _dimensional_a_to_spin(m, a),
+    )

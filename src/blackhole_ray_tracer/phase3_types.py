@@ -16,7 +16,9 @@ class KerrRenderConfig:
     width: int
     height: int
     m: float = 1.0
-    spin: float = 0.5
+    spin: float | None = None
+    # Compatibility alias for callers using Kerr's dimensional parameter name.
+    a: float | None = None
     r_observer: float = 30.0
     observer_theta: float = math.pi / 3.0
     observer_phi: float = 0.0
@@ -26,10 +28,28 @@ class KerrRenderConfig:
     r_escape: float = 80.0
     r_horizon_epsilon: float = 1e-3
     sky_mode: str = "gradient"
+    use_native_phase2: bool = False
     disk: DiskConfig | None = None
     def __post_init__(self) -> None:
-        if not math.isfinite(self.spin) or abs(self.spin) > 1.0:
+        spin = self.spin
+        if spin is None:
+            if self.a is None:
+                spin = 0.5
+            elif math.isfinite(self.m) and self.m != 0.0:
+                spin = self.a / self.m
+            else:
+                spin = self.a
+        elif (
+            self.a is not None
+            and math.isfinite(self.m)
+            and self.m != 0.0
+            and spin != self.a / self.m
+        ):
+            raise ValueError("Kerr spin and a must match when both are provided.")
+        if not math.isfinite(spin) or abs(spin) > 1.0:
             raise ValueError("Kerr spin must be finite with |spin| <= 1.")
+        object.__setattr__(self, "spin", spin)
+        object.__setattr__(self, "a", spin * self.m)
         _validate_render_parameters(
             width=self.width,
             height=self.height,
@@ -42,7 +62,7 @@ class KerrRenderConfig:
             max_steps=self.max_steps,
             r_escape=self.r_escape,
             r_horizon_epsilon=self.r_horizon_epsilon,
-            horizon_radius=kerr_outer_horizon(self.m, self.spin),
+            horizon_radius=kerr_outer_horizon(self.m, spin),
         )
         if abs(math.sin(self.observer_theta)) < 1e-10:
             raise ValueError("Kerr observer theta must avoid coordinate poles.")

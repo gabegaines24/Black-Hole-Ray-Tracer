@@ -25,10 +25,13 @@ def render_kerr_image(cfg: KerrRenderConfig) -> tuple[np.ndarray, RenderStats]:
     h, w = cfg.height, cfg.width
     rgb = np.zeros((h, w, 3), dtype=np.float32)
     n_cap = n_esc = n_other = 0
+    if cfg.spin is None:
+        raise ValueError("KerrRenderConfig must define spin or a.")
+    spin = cfg.spin
 
     cam = make_kerr_camera_from_config(
         m=cfg.m,
-        spin=cfg.spin,
+        spin=spin,
         r=cfg.r_observer,
         theta=cfg.observer_theta,
         phi=cfg.observer_phi,
@@ -97,5 +100,13 @@ def render_kerr_image(cfg: KerrRenderConfig) -> tuple[np.ndarray, RenderStats]:
         "other": n_other,
         "frac_captured": n_cap / total,
         "backend": "python_kerr",
-        "spin": cfg.spin,
+        "spin": spin,
     }
+
+
+def render_kerr_3d_image(cfg: KerrRenderConfig) -> tuple[np.ndarray, RenderStats]:
+    """Render through legacy Phase 3 entry point and preserve backend label."""
+    rgb, stats = render_kerr_image(cfg)
+    legacy_stats = stats.copy()
+    legacy_stats["backend"] = "kerr_python"
+    return rgb, legacy_stats

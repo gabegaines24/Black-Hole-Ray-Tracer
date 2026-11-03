@@ -8,6 +8,7 @@ import numpy as np
 
 from .phase1 import RayStatus, rk4_step
 from .phase2_types import GeodesicTraceResult
+from .phase2_geodesic import trace_null_geodesic_3d
 from .phase3_christoffel import (
     I_PH,
     I_T,
@@ -95,16 +96,39 @@ def trace_kerr_null_geodesic(
     x0: np.ndarray,
     v0: np.ndarray,
     m: float,
-    spin: float,
-    dlambda: float,
-    max_steps: int,
-    r_escape: float,
+    spin: float | None = None,
+    dlambda: float | None = None,
+    max_steps: int | None = None,
+    r_escape: float | None = None,
     r_horizon_epsilon: float = 1e-3,
     *,
+    a: float | None = None,
     store_samples: bool = True,
     sample_stride: int = 1,
 ) -> GeodesicTraceResult:
-    """Trace one Kerr null geodesic with RK4 in affine parameter."""
+    """Trace Kerr null geodesic; ``a`` is dimensional compatibility input."""
+    if a is not None:
+        if m == 0.0:
+            raise ValueError("Mass m must be nonzero when a is provided.")
+        spin_from_a = a / m
+        if spin is not None and spin != spin_from_a:
+            raise ValueError("spin and a must match when both are provided.")
+        spin = spin_from_a
+    if spin is None or dlambda is None or max_steps is None or r_escape is None:
+        raise TypeError("spin/a, dlambda, max_steps, and r_escape are required.")
+    # Equatorial zero-spin rays share Phase 2's exact Schwarzschild stepping path.
+    if spin == 0.0 and abs(float(v0[2])) <= 1e-15:
+        return trace_null_geodesic_3d(
+            x0,
+            v0,
+            m=m,
+            dlambda=dlambda,
+            max_steps=max_steps,
+            r_escape=r_escape,
+            r_horizon_epsilon=r_horizon_epsilon,
+            store_samples=store_samples,
+            sample_stride=sample_stride,
+        )
     y = np.concatenate([x0.astype(float), v0.astype(float)], axis=0)
     y = renormalize_kerr_momentum_from_null_constraint(y, m, spin)
     r_cap = kerr_outer_horizon(m, spin) + r_horizon_epsilon
