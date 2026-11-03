@@ -33,13 +33,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y build-essential
-          BLACKHOLE_BUILD_NATIVE=1 uv sync --extra dev
+          BLACKHOLE_BUILD_NATIVE=1 uv sync --dev
         env:
           BLACKHOLE_BUILD_NATIVE: "1"
 
       - name: Install (without native extension)
         if: runner.os != 'Linux'
-        run: uv sync --extra dev
+        run: uv sync --dev
 
       - name: Run tests
         run: uv run pytest -q --tb=short
