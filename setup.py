@@ -15,13 +15,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-from setuptools import setup
-
-ROOT = Path(__file__).resolve().parent
+from setuptools import Extension, setup
 
 
 def src(*parts: str) -> str:
-    return str(ROOT.joinpath(*parts))
+    return "/".join(parts)
 
 
 def _truthy(env: str) -> bool:
@@ -58,10 +56,12 @@ def should_build_native() -> bool:
 ext_modules = []
 cmdclass = {}
 if should_build_native():
-    from pybind11.setup_helpers import Pybind11Extension, build_ext
+    from pybind11 import get_include
+    from setuptools.command.build_ext import build_ext
 
+    native_libraries = ["c++", "c++abi"] if sys.platform == "darwin" else ["stdc++"]
     ext_modules = [
-        Pybind11Extension(
+        Extension(
             "blackhole_ray_tracer._native_phase2",
             [
                 src("bridge", "module_phase2.cpp"),
@@ -71,8 +71,10 @@ if should_build_native():
             ],
             include_dirs=[
                 src("kernel", "include"),
+                get_include(),
             ],
-            cxx_std=17,
+            libraries=native_libraries,
+            language="c++",
         ),
     ]
     cmdclass = {"build_ext": build_ext}
