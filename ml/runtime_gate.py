@@ -103,6 +103,47 @@ class RuntimeGate:
             return self._infer_surrogate(y0, m)
         return self._full_integrate(y0, m, dlambda, max_steps, r_escape, r_horizon_epsilon)
 
+    def infer_or_integrate_batch(
+        self,
+        y0_batch: np.ndarray,
+        m: float,
+        dlambda: float,
+        max_steps: int,
+        r_escape: float,
+        r_horizon_epsilon: float = 1e-3,
+    ) -> dict[str, Any]:
+        """Route each row through ``infer_or_integrate`` and aggregate results."""
+        batch = np.asarray(y0_batch, dtype=np.float64)
+        if batch.ndim != 2 or batch.shape[1] != 8:
+            raise ValueError("y0_batch must have shape (N, 8)")
+
+        results = [
+            self.infer_or_integrate(
+                y0,
+                m=m,
+                dlambda=dlambda,
+                max_steps=max_steps,
+                r_escape=r_escape,
+                r_horizon_epsilon=r_horizon_epsilon,
+            )
+            for y0 in batch
+        ]
+        return {
+            "status": np.asarray([result.status for result in results], dtype=np.int32),
+            "r_min": np.asarray([result.r_min for result in results], dtype=np.float64),
+            "termination_r": np.asarray(
+                [result.termination_r for result in results], dtype=np.float64
+            ),
+            "steps_taken": np.asarray(
+                [result.steps_taken for result in results], dtype=np.int32
+            ),
+            "from_surrogate": np.asarray(
+                [result.from_surrogate for result in results], dtype=np.bool_
+            ),
+            "n_surrogate": sum(result.from_surrogate for result in results),
+            "n_integrated": sum(not result.from_surrogate for result in results),
+        }
+
     def _infer_surrogate(self, y0: np.ndarray, m: float) -> SurrogateResult:
         """Call the surrogate MLP for a single ray."""
         from ml.surrogate import MLPWeights, predict_batch
