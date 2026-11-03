@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ml.dataset import generate_dataset, load_dataset, save_dataset
-from ml.schema import N_INPUTS, N_OUTPUTS
+from ml.dataset import generate_dataset, load_dataset, save_dataset  # noqa: E402
+from ml.schema import N_INPUTS, N_OUTPUTS  # noqa: E402
 
 
 class TestGenerateDataset:

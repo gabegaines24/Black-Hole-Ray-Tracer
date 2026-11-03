@@ -80,7 +80,6 @@ uv run mypy src       # after dev group
 | `kernel/include/bh_rt_rk4.h`, `kernel/src/bh_rt_rk4.c` | Shared C **RK4** step (no Python) |
 | `kernel/include/bh_rt_schwarzschild_u.h`, `kernel/src/bh_rt_schwarzschild_u.c` | Schwarzschild 2D \(u(\phi)=1/r\) ray trace (parity with `phase1.py`) |
 | `kernel/include/bh_rt_schwarzschild_phase2.h`, `kernel/src/bh_rt_schwarzschild_phase2.c` | Schwarzschild **3D** null tracer (Christoffel + RK4; parity with `phase2_geodesic.py`) |
-| `kernel/include/bh_rt_schwarzschild_3d.h`, `kernel/src/bh_rt_schwarzschild_3d.c` | Scalar + SoA-batch Schwarzschild **3D** trace API for the next bridge/batch path |
 | `kernel/src/demo_harmonic.c`, `kernel/src/demo_schwarzschild_u.c`, `kernel/Makefile` | RK4 + Schwarzschild CLI demos (`make -C kernel`) |
 | `bridge/module_phase2.cpp`, `MANIFEST.in`, `setup.py` | setuptools + PyBind11 extension `_native_phase2` embedding `bh_rt_*` sources |
 | `src/blackhole_ray_tracer/native_phase2.py` | Optional import façade + `native_phase2_available()` |

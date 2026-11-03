@@ -1,43 +1,56 @@
-"""Phase 3 domain types: Kerr render configuration."""
+"""Phase 3 Kerr render configuration types."""
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
-__all__ = ["KerrRenderConfig"]
-
-from .phase2_types import DiskConfig, Phase2RenderConfig
+from .phase2_types import DiskConfig, _validate_render_parameters
+from .phase3_christoffel import kerr_outer_horizon
 
 
 @dataclass(frozen=True, slots=True)
 class KerrRenderConfig:
-    """Parameters for a Kerr 3D null-geodesic image render.
-
-    Extends Phase2RenderConfig by adding a spin parameter `a`.
-    When `a=0` the Kerr integrator is numerically equivalent to the
-    Schwarzschild Phase 2 tracer.
-    """
+    """Parameters for a Kerr Boyer-Lindquist pinhole render."""
 
     width: int
     height: int
     m: float = 1.0
-    a: float = 0.0             # spin parameter (|a| <= M)
+    spin: float | None = None
+    # Compatibility alias for callers using Kerr's dimensional parameter name.
+    a: float | None = None
     r_observer: float = 30.0
-    observer_theta: float = 1.5707963267948966   # π/2
+    observer_theta: float = math.pi / 3.0
     observer_phi: float = 0.0
     fov_deg: float = 60.0
     dlambda: float = 0.06
-    max_steps: int = 8000
+    max_steps: int = 10_000
     r_escape: float = 80.0
     r_horizon_epsilon: float = 1e-3
     sky_mode: str = "gradient"
-    use_native_phase2: bool = False   # if True and a=0, use C batch path
+    use_native_phase2: bool = False
     disk: DiskConfig | None = None
-    supersample: int = 1
-
-    def to_phase2_config(self) -> Phase2RenderConfig:
-        """Return equivalent Phase2RenderConfig for a=0 dispatch."""
-        return Phase2RenderConfig(
+    def __post_init__(self) -> None:
+        spin = self.spin
+        if spin is None:
+            if self.a is None:
+                spin = 0.5
+            elif math.isfinite(self.m) and self.m != 0.0:
+                spin = self.a / self.m
+            else:
+                spin = self.a
+        elif (
+            self.a is not None
+            and math.isfinite(self.m)
+            and self.m != 0.0
+            and spin != self.a / self.m
+        ):
+            raise ValueError("Kerr spin and a must match when both are provided.")
+        if not math.isfinite(spin) or abs(spin) > 1.0:
+            raise ValueError("Kerr spin must be finite with |spin| <= 1.")
+        object.__setattr__(self, "spin", spin)
+        object.__setattr__(self, "a", spin * self.m)
+        _validate_render_parameters(
             width=self.width,
             height=self.height,
             m=self.m,
@@ -49,8 +62,9 @@ class KerrRenderConfig:
             max_steps=self.max_steps,
             r_escape=self.r_escape,
             r_horizon_epsilon=self.r_horizon_epsilon,
-            sky_mode=self.sky_mode,
-            use_native_phase2=self.use_native_phase2,
-            disk=self.disk,
-            supersample=self.supersample,
+            horizon_radius=kerr_outer_horizon(self.m, spin),
         )
+        if abs(math.sin(self.observer_theta)) < 1e-10:
+            raise ValueError("Kerr observer theta must avoid coordinate poles.")
+        if self.sky_mode not in {"gradient", "flat"}:
+            raise ValueError("sky_mode must be 'gradient' or 'flat'.")
