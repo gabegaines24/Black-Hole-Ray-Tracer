@@ -80,6 +80,11 @@ jobs:
           mkdir -p build
           make -C kernel/cuda cuda_batch ARCH=sm_75
 
+      - name: Verify pip-installable CUDA build (setup.py)
+        run: |
+          BLACKHOLE_BUILD_CUDA=1 uv sync --dev
+          test -f build/libbh_rt_phase2_cuda.so && echo "setup.py CUDA build OK"
+
       - name: Verify shared library exists
         run: |
           test -f build/libbh_rt_phase2_cuda.so && echo "CUDA library built OK"

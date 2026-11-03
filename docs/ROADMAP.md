@@ -50,9 +50,8 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 **Known gaps**
 
-- Pure-Python per-pixel loop remains the default fallback; use `--phase2-native`, `--phase2-cuda`, or `--phase2-ml` for batch backends.
-- Kerr spin in Phase 2 is out of scope (use Phase 3 / `phase3_driver`).
-- Pip-installable CUDA build (`setup.py` nvcc target) not yet implemented.
+- Phase 2 render loop is still **Python-orchestrated** (per-pixel); optional **C per-ray** path when `use_native_phase2` + `_native_phase2` is installed (see `phase2_render`, `--phase2-native`).
+- No anti-aliasing, no accretion disk texture, no Kerr.
 
 **Acceptance (maintain)**
 
@@ -61,7 +60,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 ---
 
-### Phase 2+ / kernel bridge — substantially complete
+### Phase 2+ / kernel bridge — in progress
 
 | Item | Goal | Status |
 |------|------|--------|
@@ -70,15 +69,14 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | **Phase A harmonic parity** | C vs `phase1.run_rk4_sanity` | Done: [`kernel/src/demo_harmonic.c`](../kernel/src/demo_harmonic.c), `make -C kernel`, [`tests/test_kernel_harmonic_parity.py`](../tests/test_kernel_harmonic_parity.py) (skips if no C toolchain) |
 | **Schwarzschild \(2D equatorial\) kernel** | `u(\phi)=1/r` loop vs `phase1.trace_single_schwarzschild_ray` | Done: [`kernel/include/bh_rt_schwarzschild_u.h`](../kernel/include/bh_rt_schwarzschild_u.h), [`kernel/src/bh_rt_schwarzschild_u.c`](../kernel/src/bh_rt_schwarzschild_u.c), [`kernel/src/demo_schwarzschild_u.c`](../kernel/src/demo_schwarzschild_u.c), [`tests/test_kernel_schwarzschild_u_parity.py`](../tests/test_kernel_schwarzschild_u_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
 | **Schwarzschild / Phase 2 \(3D Christoffel\) kernel** | Match `phase2_geodesic` Python RHS + termination | Done: [`kernel/include/bh_rt_schwarzschild_phase2.h`](../kernel/include/bh_rt_schwarzschild_phase2.h), [`kernel/src/bh_rt_schwarzschild_phase2.c`](../kernel/src/bh_rt_schwarzschild_phase2.c), [`tests/test_kernel_phase2_parity.py`](../tests/test_kernel_phase2_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
-| **SoA batched Schwarzschild bridge** | N-ray batch + `eq_r_cross` | Done: [`kernel/src/bh_rt_schwarzschild_phase2_batch.c`](../kernel/src/bh_rt_schwarzschild_phase2_batch.c), [`bridge/module_phase2.cpp`](../bridge/module_phase2.cpp), [`tests/test_kernel_phase2_batch_parity.py`](../tests/test_kernel_phase2_batch_parity.py) |
-| **`bridge/` Phase 2** | pybind11 single-ray + batch | Done: **`_native_phase2`**; optional use from [`phase2_render.py`](../src/blackhole_ray_tracer/phase2_render.py) (`use_native_phase2`, `--phase2-native`) |
-| **Kerr / Phase 3 C kernel** | Match `phase3_geodesic` Python RHS + termination | Done: [`kernel/src/bh_rt_kerr_phase3.c`](../kernel/src/bh_rt_kerr_phase3.c), [`kernel/src/bh_rt_kerr_phase3_batch.c`](../kernel/src/bh_rt_kerr_phase3_batch.c), [`bridge/module_phase3.cpp`](../bridge/module_phase3.cpp) → **`_native_phase3`**; optional use from [`phase3_render.py`](../src/blackhole_ray_tracer/phase3_render.py) (`use_native_phase3`, `phase3_driver --native`) |
+| **`bridge/`** | pybind11 — single-ray Phase 3D trace (+ future batch API) | Started: [`bridge/module_phase2.cpp`](../bridge/module_phase2.cpp) → **`_native_phase2`**; optional **per-pixel** use from [`phase2_render.py`](../src/blackhole_ray_tracer/phase2_render.py) (`use_native_phase2`); pytest bridge parity skips if extension missing |
 
 **Acceptance**
 
 - `make -C kernel` builds **`harmonic_demo`** and **`schwarzschild_demo`** where `cc`/`gcc`/`clang` exists.
-- **`uv pip install -e .` / `uv sync`** rebuilds **`_native_phase2`** and **`_native_phase3`** where a suitable C++/C toolchain is configured ( MSVC / gcc / clang ).
+- **`uv pip install -e .` / `uv sync`** rebuilds **`_native_phase2`** where a suitable C++/C toolchain is configured ( MSVC / gcc / clang ).
 - Full `pytest` run passes (kernel parity tests skip without a toolchain or when `SKIP_KERNEL_TESTS=1`; native bridge parity skips without the compiled extension).
+- SoA batched bridge API remains future work ([`STATE_API.md`](./STATE_API.md)).
 
 ---
 
@@ -93,7 +91,6 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | Disk detection in native batch path (`eq_r_cross`) | Done | `kernel/.../batch.c`, `bridge/`, `phase2_render.py` |
 | Anti-aliasing (supersample + box-average) | Done | `phase2_types.py` supersample field, `phase2_render.py`, `--aa` flag |
 | ML scaffold (schema, dataset, surrogate, gate) | Done | `ml/` |
-| ML render wiring | Done | `phase2_ml.py`, `Phase2RenderConfig.use_ml_surrogate`, `--phase2-ml` |
 | ML end-to-end tests | Done | `tests/test_ml.py` |
 
 **Acceptance**
@@ -104,19 +101,19 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 
 ---
 
-### Phase 4 — GPU port — in progress
+### Phase 4 — GPU port — substantially complete (runtime requires GPU)
 
 | Item | Goal | Status |
 |------|------|--------|
-| CUDA batch kernel | Preview-oriented throughput | Done: [`kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu`](../kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu) + `eq_r_cross` |
-| Python ctypes bridge | Load `libbh_rt_phase2_cuda.so` at runtime | Done: [`native_phase2_cuda.py`](../src/blackhole_ray_tracer/native_phase2_cuda.py) |
-| Render wiring | GPU batch in `phase2_render` | Done: `Phase2RenderConfig.use_cuda_batch`, `--phase2-cuda` / `phase2_driver --cuda` |
-| `setup.py` `nvcc` target | Pip-installable GPU path | Planned |
+| CUDA batch kernel | Preview-oriented throughput | `.cu` exists; `make -C kernel/cuda cuda_batch` or `BLACKHOLE_BUILD_CUDA=1 uv sync` |
+| Python ctypes bridge | Load `libbh_rt_phase2_cuda.so` at runtime | `native_phase2_cuda.py` |
+| `setup.py` `nvcc` target | Pip-installable GPU path | Done: `build_cuda` command installs `.so` next to package |
+| Phase 2 render CUDA path | GPU batch in image loop | `use_cuda_phase2`, `--phase2-cuda` / `phase2_driver --cuda` |
 
 **Acceptance**
 
 - `make -C kernel/cuda cuda_batch ARCH=sm_75` produces `build/libbh_rt_phase2_cuda.so` (requires CUDA toolkit).
-- `--phase2-render --phase2-cuda` uses backend `cuda_batch` when the library is present.
+- `BLACKHOLE_BUILD_CUDA=1 uv sync` runs `build_cuda` when `nvcc` is on `PATH`.
 - Optional CI step (`CUDA_AVAILABLE=1` repo variable) validates the build.
 
 ---
@@ -133,7 +130,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | `--phase1-step-e` | Step E PPM (`--ppm-out`, `--img-width`, `--img-height`, `--preset`) |
 | `--phase1-step-f` | Step F report |
 | `--phase2-report` | Phase 2 presets + benchmark |
-| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, size flags; `--phase2-native` CPU batch; `--phase2-cuda` GPU; `--phase2-ml` surrogate; `--aa` anti-alias) |
+| `--phase2-render` | Phase 2 PPM (`--phase2-out`, `--phase2-preset`, image size flags; `--phase2-native` for C per-ray; `--phase2-cuda` for GPU batch) |
 
 ### `python -m blackhole_ray_tracer.phase1_driver`
 
@@ -146,24 +143,10 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | Flag | Purpose |
 |------|---------|
 | `--report` | Presets + `dlambda` benchmark |
-| `--render` | 3D PPM (`--out`, `--preset` or size/integration flags) |
-| `--native` | C CPU batch (`_native_phase2`) |
-| `--cuda` | GPU batch (`libbh_rt_phase2_cuda.so`) |
-| `--ml` | ML surrogate batch (`RuntimeGate`; `--ml-model-path`) |
+| `--render` | 3D PPM (`--out`, `--preset` or `--width`/`--height`/`--dlambda`/…) |
+| `--native` | Use C extension per ray when `_native_phase2` is installed |
 
 Installation: typically `PYTHONPATH=src` when developing from checkout without reinstall.
-
----
-
-## Next roads (not yet started)
-
-| Road | Focus | Starting point |
-|------|--------|----------------|
-| **D — Visual / UX** | Streamlit dashboard, richer sky/disk, preview controls | `preview.py`, `pyproject.toml` `viz` group |
-| **E — Numerical quality** | Adaptive `dlambda`, edge-case tests, Phase 1 C SoA batch | `phase1.rk4_step`, `docs/STATE_API.md` |
-| **F — Release** | Prebuilt wheels, Windows native docs polish | `setup.py`, `README.md` |
-
-Completed since the status plan: **B** Kerr C kernel, **A** CUDA render wiring, **C** ML `RuntimeGate` in render, partial **F** doc sync (this section).
 
 ---
 
@@ -195,9 +178,7 @@ Completed since the status plan: **B** Kerr C kernel, **A** CUDA render wiring, 
 - [x] CUDA batch kernel (`kernel/cuda/`) + Python ctypes bridge (`native_phase2_cuda.py`).
 - [x] **Ignore `*.ppm` in `.gitignore`** — render outputs are binary and bloat history; keep them untracked (policy; see repo `.gitignore`).
 - [x] Kerr Boyer–Lindquist geodesic integrator (`phase3_christoffel.py`, `phase3_geodesic.py`) + render dispatcher + parity / conservation tests.
-- [x] Kerr C kernel + batch (`bh_rt_kerr_phase3_*`) + PyBind `_native_phase3` + optional native Kerr render path.
 - [x] Equatorial crossing output in C batch kernel (`out_eq_r_cross`) → disk detection in native batch path.
 - [x] Anti-aliasing supersample (`Phase2RenderConfig.supersample`, `--aa` CLI flag).
 - [x] ML end-to-end tests (`tests/test_ml.py`): schema, dataset shapes, surrogate forward, gate routing.
-- [x] ML render wiring (`Phase2RenderConfig.use_ml_surrogate`, `phase2_ml.py`, `--phase2-ml`).
-- [x] CUDA render wiring (`Phase2RenderConfig.use_cuda_batch`, `--phase2-cuda`, `phase2_driver --cuda`).
+- [x] CUDA standalone build path (`kernel/cuda/Makefile`, `build/.gitkeep`, optional CI step).

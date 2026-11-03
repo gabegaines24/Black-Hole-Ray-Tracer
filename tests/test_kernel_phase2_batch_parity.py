@@ -148,6 +148,7 @@ def _call_c_batch(fn, y0: np.ndarray, m: float, dlambda: float, max_steps: int,
         np.array(list(c_steps),  dtype=np.int32),
         np.array(list(c_term_r), dtype=np.float64),
         np.array(list(c_r_min),  dtype=np.float64),
+        np.array(list(c_eq_r),   dtype=np.float64),
     )
 
 
@@ -166,7 +167,7 @@ def test_phase2_batch_parity_grid(batch_trace_fn, width, height, dlambda, max_st
     y0 = _build_grid_y0(width, height, m=m)
 
     py_results = _run_python_batch(y0, m, dlambda, max_steps, r_escape, r_hep)
-    c_status, c_steps, c_term_r, c_r_min = _call_c_batch(
+    c_status, c_steps, c_term_r, c_r_min, _c_eq_r = _call_c_batch(
         batch_trace_fn, y0, m, dlambda, max_steps, r_escape, r_hep)
 
     for i, py in enumerate(py_results):

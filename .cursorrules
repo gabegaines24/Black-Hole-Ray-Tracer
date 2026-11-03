@@ -4,14 +4,14 @@
 
 ## Project identity
 
-This is **blackhole_ray_tracer**: a Python-first null-geodesic ray tracer for Schwarzschild and Kerr spacetimes.
-Architecture: Python prototypes → C/bridge batch kernels → optional CUDA → optional ML surrogate.
+This is **blackhole_ray_tracer**: a Python-first null-geodesic ray tracer for Schwarzschild (and eventually Kerr) spacetimes.
+Architecture direction: Python prototypes → C kernel (`kernel/`) → pybind11 bridge (`bridge/`) → optional GPU path.
 
 ---
 
 ## Hard rules (never violate)
 
-1. **Verify before assuming.** Before referencing any file under `kernel/`, `bridge/`, or `ml/`, list the directory or read the file. Do not claim an implementation exists without seeing it.
+1. **Verify before assuming.** Before referencing any file under `kernel/`, `bridge/`, or `ml/`, list the directory first. Those directories may be empty scaffolds. Never claim an implementation exists without seeing it.
 
 2. **Run tests before claiming completion.** After any substantive Python edit, run `uv run pytest`. Do not mark a task done if tests fail or were not run.
 
@@ -54,25 +54,14 @@ src/blackhole_ray_tracer/
   phase2_geodesic.py     # 3D null RK4 in affine parameter
   phase2_camera.py       # static observer pinhole initializer
   phase2_types.py        # shared types
-  phase2_render.py       # pinhole image; backends: python, native_batch, cuda_batch, ml_surrogate
-  phase2_ml.py           # RuntimeGate batch dispatch for ML surrogate
-  phase2_batch.py        # SoA helpers + build_camera_y0
-  phase2_disk.py         # accretion disk overlay
+  phase2_render.py       # pinhole image loop, PPM output
   phase2_report.py       # presets + benchmark
   phase2_driver.py       # CLI for phase 2
-  phase3_*.py            # Kerr BL integrator + render
-  native_phase2.py       # C CPU batch bridge façade
-  native_phase3.py       # Kerr C batch bridge façade
-  native_phase2_cuda.py  # optional CUDA ctypes loader
   main.py                # blackhole-ray-tracer console script entry
 
 tests/
   test_phase1_extensions.py
   test_phase2.py
-  test_phase3_*.py
-  test_kernel_*.py
-  test_bridge_*.py
-  test_ml*.py
 
 docs/
   OVERVIEW.md
@@ -80,18 +69,13 @@ docs/
   AGENT_PROMPT.md
 
 kernel/
-  include/bh_rt_*.h
-  src/bh_rt_*.c
-  src/demo_*.c
+  include/bh_rt_rk4.h
+  src/bh_rt_rk4.c
+  src/demo_harmonic.c    # Phase A harmonic parity CLI
   Makefile README.md
-  cuda/                  # optional GPU batch (.cu + Makefile)
 
-bridge/
-  module_phase2.cpp      # _native_phase2
-  module_phase3.cpp      # _native_phase3
-
-ml/
-  schema.py dataset.py surrogate.py runtime_gate.py
+bridge/    # PLANNED — may be empty; verify before touching
+ml/        # PLANNED — may be empty; verify before touching
 ```
 
 ---

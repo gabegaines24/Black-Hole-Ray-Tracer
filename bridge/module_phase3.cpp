@@ -27,7 +27,7 @@ PYBIND11_MODULE(_native_phase3, m) {
         double y_copy[8];
         std::memcpy(y_copy, buf.ptr, sizeof(y_copy));
 
-        bh_rt_phase2_trace_result out{};
+        bh_rt_kerr_trace_result out{};
         bh_rt_kerr_phase3_trace(y_copy, mass, spin, dlambda, max_steps, r_escape,
                                 r_horizon_epsilon, &out);
 

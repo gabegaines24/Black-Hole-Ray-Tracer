@@ -9,7 +9,6 @@ Verifies that:
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from blackhole_ray_tracer.phase2_render import render_schwarzschild_3d_image
 from blackhole_ray_tracer.phase2_types import Phase2RenderConfig
