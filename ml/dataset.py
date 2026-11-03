@@ -87,7 +87,8 @@ def generate_dataset(
     rng = np.random.default_rng(seed)
     rays = _sample_random_rays(n_rays * 2, rng, m=m)   # oversample, trim later
 
-    X_rows, Y_rows = [], []
+    X_rows: list[list[float]] = []
+    Y_rows: list[list[float]] = []
     for i, (ri, thi, phi_i, vt_i, vr_i, vth_i, vph_i) in enumerate(rays):
         if len(X_rows) >= n_rays:
             break

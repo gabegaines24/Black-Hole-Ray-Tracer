@@ -12,7 +12,6 @@ import math
 import pytest
 
 from blackhole_ray_tracer.phase3_christoffel import (
-    geodesic_acceleration_kerr,
     kerr_conserved,
     kerr_delta,
     kerr_null_geodesic_rhs,
@@ -116,7 +115,6 @@ class TestRenormalise:
 
     def test_renormalize_returns_array_of_8(self):
         """renormalize_vr_kerr returns a length-8 state vector."""
-        import numpy as np
         y = [0.0, 10.0, math.pi / 2, 0.0, 1.1, -0.5, 0.01, 0.08]
         result = renormalize_vr_kerr(y, m=M, a=0.5)
         assert len(result) == 8
@@ -125,7 +123,6 @@ class TestRenormalise:
 
     def test_renormalize_only_modifies_vr(self):
         """Only y[5] (v^r) should be adjusted; other components unchanged."""
-        import numpy as np
         y = [0.0, 10.0, math.pi / 2, 0.0, 1.1, -0.5, 0.01, 0.08]
         result = renormalize_vr_kerr(y, m=M, a=0.5)
         for i in [0, 1, 2, 3, 4, 6, 7]:
@@ -149,7 +146,6 @@ class TestODERhs:
 
     def test_rhs_all_finite(self):
         """All components of the RHS must be finite at well-separated r."""
-        import numpy as np
         y = [0.0, 15.0, math.pi / 2, 0.0, 1.0, -0.1, 0.0, 0.05]
         dy = kerr_null_geodesic_rhs(0.0, y, m=M, a=0.6)
         assert all(math.isfinite(float(v)) for v in dy), f"Non-finite in RHS: {dy}"
