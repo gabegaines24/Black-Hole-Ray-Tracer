@@ -222,3 +222,21 @@ class TestRuntimeGateRouting:
         weights = init_random_weights()
         gate_full = RuntimeGate(weights=weights)
         assert gate_full.surrogate_loaded is True
+
+    def test_batch_routing_returns_render_contract(self):
+        gate = RuntimeGate(weights=None)
+        y0_batch = np.stack([self._make_y0(5.0), self._make_y0(15.0)])
+        result = gate.infer_or_integrate_batch(
+            y0_batch,
+            m=1.0,
+            dlambda=0.1,
+            max_steps=5,
+            r_escape=80.0,
+        )
+
+        assert result["status"].shape == (2,)
+        assert result["r_min"].shape == (2,)
+        assert result["termination_r"].shape == (2,)
+        assert result["steps_taken"].shape == (2,)
+        assert result["n_surrogate"] == 0
+        assert result["n_integrated"] == 2
