@@ -24,8 +24,6 @@ kernel/harmonic_demo
 kernel/harmonic_demo.exe
 kernel/schwarzschild_demo
 kernel/schwarzschild_demo.exe
-kernel/schwarzschild3d_demo
-kernel/schwarzschild3d_demo.exe
 kernel/phase2_batch_demo
 kernel/phase2_batch_demo.exe
 
@@ -46,6 +44,10 @@ env/
 data/
 models/
 !models/README.md
+ml/data/*.npz
+!ml/models/
+!ml/models/surrogate.npz
+!ml/models/README.md
 
 # --- IDEs and OS ---
 .vscode/

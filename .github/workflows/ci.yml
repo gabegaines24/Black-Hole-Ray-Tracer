@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -31,18 +31,32 @@ jobs:
 
       - name: Build native extension (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get install -y build-essential
-          BLACKHOLE_BUILD_NATIVE=1 uv sync --extra dev
+        run: uv sync --group dev
         env:
           BLACKHOLE_BUILD_NATIVE: "1"
 
       - name: Install (without native extension)
         if: runner.os != 'Linux'
-        run: uv sync --extra dev
+        run: uv sync --group dev
+
+      - name: Run Ruff
+        run: uv run ruff check src tests ml
+
+      - name: Run mypy
+        run: uv run mypy src ml
 
       - name: Run tests
         run: uv run pytest -q --tb=short
+        env:
+          BLACKHOLE_BUILD_NATIVE: "1"
+
+      - name: Build Python packages
+        run: uv build --wheel --sdist
+
+      - name: Smoke test native extension
+        if: runner.os == 'Linux'
+        run: |
+          uv run python -c "from blackhole_ray_tracer.native_phase2 import native_phase2_available; raise SystemExit(0 if native_phase2_available() else 1)"
         env:
           BLACKHOLE_BUILD_NATIVE: "1"
 
