@@ -25,9 +25,8 @@ We approximate the observer as a static observer (u^μ_obs ∝ (1,0,0,0)) and
 compute the emitter contraction analytically from the conserved Killing energy
 E = −p_t f and the impact parameter L = p_φ.
 
-Since we don't accumulate samples in the batch path, the module provides a
-post-processor that works from the final ray state and crossing information
-passed through from the Python render loop.
+The Python path interpolates aligned pre-step and post-step samples. The CPU and
+CUDA batch paths emit the same first-crossing observables directly.
 """
 
 from __future__ import annotations
@@ -41,18 +40,72 @@ from typing import NamedTuple
 class DiskConfig:
     """Parameters for the thin equatorial disk."""
 
-    r_inner: float = 6.0    # ISCO = 6M for Schwarzschild
+    r_inner: float = 6.0
     r_outer: float = 20.0
-    # Simple two-color gradient: inner ring is hotter (bluer)
-    inner_color: tuple[float, float, float] = (1.0, 0.6, 0.2)   # warm orange
-    outer_color: tuple[float, float, float] = (0.8, 0.3, 0.05)  # dim red
-    redshift_scale: float = 1.0   # multiply (1+z) effect on brightness
+    inner_color: tuple[float, float, float] = (1.0, 0.6, 0.2)
+    outer_color: tuple[float, float, float] = (0.8, 0.3, 0.05)
+    redshift_scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.r_inner) or self.r_inner <= 0.0:
+            raise ValueError("Disk inner radius must be positive and finite.")
+        if not math.isfinite(self.r_outer) or self.r_outer <= self.r_inner:
+            raise ValueError("Disk outer radius must exceed inner radius.")
+        for name, color in (
+            ("inner_color", self.inner_color),
+            ("outer_color", self.outer_color),
+        ):
+            if len(color) != 3 or any(not math.isfinite(channel) or not 0.0 <= channel <= 1.0 for channel in color):
+                raise ValueError(f"{name} must contain three finite channels in [0, 1].")
+        if not math.isfinite(self.redshift_scale) or self.redshift_scale < 0.0:
+            raise ValueError("Disk redshift scale must be finite and non-negative.")
+
+def kerr_equatorial_isco_r(m: float, spin: float) -> float:
+    """Prograde equatorial ISCO radius for Kerr (spin = dimensionless a/M).
+
+    Reduces to 6M when spin=0 (Schwarzschild limit).
+    """
+    if abs(spin) < 1e-12:
+        return 6.0 * m
+    chi = spin
+    z1 = 1.0 + (1.0 - chi * chi) ** (1.0 / 3.0) * (
+        (1.0 + chi) ** (1.0 / 3.0) + (1.0 - chi) ** (1.0 / 3.0)
+    )
+    z2 = math.sqrt(3.0 * chi * chi + z1 * z1)
+    inner = (3.0 - z1) * (3.0 + z1 - 2.0 * z2)
+    if inner < 0.0 and inner > -1e-9:
+        inner = 0.0
+    if chi >= 0.0:
+        r_over_m = 3.0 + z2 - math.sqrt(max(inner, 0.0))
+    else:
+        r_over_m = 3.0 + z2 + math.sqrt(max(inner, 0.0))
+    return r_over_m * m
+
+
+def disk_config_for_mass_spin(
+    m: float = 1.0,
+    spin: float = 0.0,
+    *,
+    r_outer: float | None = None,
+) -> DiskConfig:
+    """Build a disk config with spin-dependent inner edge at the equatorial ISCO."""
+    r_inner = kerr_equatorial_isco_r(m, spin)
+    outer = r_outer if r_outer is not None else max(20.0 * m, r_inner + 2.0 * m)
+    return DiskConfig(r_inner=r_inner, r_outer=outer)
 
 
 class DiskHit(NamedTuple):
     hit: bool
     r_cross: float             # r at the equatorial crossing (may be nan)
     z_factor: float            # (1+z)^-4 intensity scaling; 1.0 if no doppler
+
+
+class EquatorialCrossing(NamedTuple):
+    """Interpolated state at first strict equatorial crossing."""
+
+    r_cross: float
+    vt_cross: float
+    vph_cross: float
 
 
 def disk_hit_from_equatorial_crossing(
@@ -100,10 +153,20 @@ def _intensity_factor(
     if not math.isfinite(denom) or abs(denom) < 1e-30:
         return 1.0
     ratio = (f * vt) / denom
+    if not math.isfinite(ratio):
+        return 1.0
     if ratio <= 0.0:
         return 0.0
-    # Specific intensity scales as ν^4 (radiative transfer); use ratio^4
-    return min(float(ratio ** 4) * scale, 10.0)
+    # Specific intensity scales as ν^4 (radiative transfer); use ratio^4.
+    if scale == 0.0:
+        return 0.0
+    try:
+        intensity = float(ratio**4) * scale
+    except OverflowError:
+        intensity = 10.0
+    if not math.isfinite(intensity):
+        return 10.0 if intensity > 0.0 else 0.0
+    return max(0.0, min(intensity, 10.0))
 
 
 def disk_color_at_r(
@@ -116,28 +179,70 @@ def disk_color_at_r(
     base_r = ic[0] * (1.0 - t) + oc[0] * t
     base_g = ic[1] * (1.0 - t) + oc[1] * t
     base_b = ic[2] * (1.0 - t) + oc[2] * t
-    # Apply Doppler factor to brightness (clamp to [0,1])
-    br = min(base_r * z_factor, 1.0)
-    bg = min(base_g * z_factor, 1.0)
-    bb = min(base_b * z_factor, 1.0)
+    # Apply Doppler factor to brightness (clamp to [0,1]).
+    br = max(0.0, min(base_r * z_factor, 1.0))
+    bg = max(0.0, min(base_g * z_factor, 1.0))
+    bb = max(0.0, min(base_b * z_factor, 1.0))
     return (br, bg, bb)
+
+
+def _interpolate_equatorial_crossing(
+    samples_theta: list[float],
+    samples_r: list[float],
+    samples_vt: list[float] | None = None,
+    samples_vphi: list[float] | None = None,
+) -> EquatorialCrossing | None:
+    if len(samples_theta) != len(samples_r):
+        raise ValueError("theta and radius samples must have equal lengths.")
+    if (samples_vt is None) != (samples_vphi is None):
+        raise ValueError("velocity samples must be provided together.")
+    if samples_vt is not None and samples_vphi is not None:
+        if (
+            len(samples_vt) != len(samples_theta)
+            or len(samples_vphi) != len(samples_theta)
+        ):
+            raise ValueError("velocity samples must match theta sample length.")
+
+    half_pi = math.pi / 2.0
+    for i in range(1, len(samples_theta)):
+        th0 = samples_theta[i - 1] - half_pi
+        th1 = samples_theta[i] - half_pi
+        if th0 * th1 >= 0.0:
+            continue
+        alpha = abs(th0) / (abs(th0) + abs(th1) + 1e-30)
+        vt_cross = float("nan")
+        vph_cross = float("nan")
+        if samples_vt is not None and samples_vphi is not None:
+            vt_cross = samples_vt[i - 1] * (1.0 - alpha) + samples_vt[i] * alpha
+            vph_cross = (
+                samples_vphi[i - 1] * (1.0 - alpha) + samples_vphi[i] * alpha
+            )
+        return EquatorialCrossing(
+            r_cross=samples_r[i - 1] * (1.0 - alpha) + samples_r[i] * alpha,
+            vt_cross=vt_cross,
+            vph_cross=vph_cross,
+        )
+    return None
 
 
 def detect_equatorial_crossing(
     samples_theta: list[float],
     samples_r: list[float],
 ) -> tuple[bool, float]:
-    """Search stored theta/r samples for the first equatorial crossing.
+    """Return whether first strict crossing exists and its interpolated radius."""
+    crossing = _interpolate_equatorial_crossing(samples_theta, samples_r)
+    if crossing is None:
+        return False, float("nan")
+    return True, crossing.r_cross
 
-    Returns (found, r_cross).  Only the first crossing is returned.
-    """
-    half_pi = math.pi / 2.0
-    for i in range(1, len(samples_theta)):
-        th0 = samples_theta[i - 1] - half_pi
-        th1 = samples_theta[i] - half_pi
-        if th0 * th1 < 0.0:
-            # Linear interpolation
-            alpha = abs(th0) / (abs(th0) + abs(th1) + 1e-30)
-            r_cross = samples_r[i - 1] * (1.0 - alpha) + samples_r[i] * alpha
-            return True, r_cross
-    return False, float("nan")
+
+def detect_equatorial_crossing_state(
+    samples_theta: list[float],
+    samples_r: list[float],
+    samples_vt: list[float],
+    samples_vphi: list[float],
+) -> EquatorialCrossing | None:
+    """Return first crossing radius and interpolated photon velocities."""
+    return _interpolate_equatorial_crossing(
+        samples_theta, samples_r, samples_vt, samples_vphi
+    )

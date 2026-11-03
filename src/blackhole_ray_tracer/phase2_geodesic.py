@@ -66,12 +66,22 @@ def trace_null_geodesic_3d(
     r_samples: list[float] = []
     t_samples: list[float] = []
     theta_samples: list[float] = []
+    vt_samples: list[float] = []
+    vphi_samples: list[float] = []
     status = RayStatus.MAX_STEPS
     termination_r = float("nan")
     termination_lambda = 0.0
     steps_taken = 0
 
     lam = 0.0
+    stride = max(sample_stride, 1)
+    if store_samples and all(math.isfinite(float(value)) for value in y):
+        r_samples.append(float(y[1]))
+        t_samples.append(float(y[0]))
+        theta_samples.append(float(y[2]))
+        vt_samples.append(float(y[4]))
+        vphi_samples.append(float(y[7]))
+
     for step_idx in range(max_steps):
         t, r, th, ph, vt, vr, vth, vph = (float(x) for x in y)
         if not all(math.isfinite(x) for x in (t, r, th, ph, vt, vr, vth, vph)):
@@ -91,10 +101,6 @@ def trace_null_geodesic_3d(
             steps_taken = step_idx
             break
         r_min = min(r_min, r)
-        if store_samples and (step_idx % max(sample_stride, 1) == 0):
-            r_samples.append(r)
-            t_samples.append(t)
-            theta_samples.append(th)
 
         y = rk4_step(null_geodesic_first_order, lam, y, dlambda, m)
         # Periodically project back onto null cone
@@ -102,6 +108,14 @@ def trace_null_geodesic_3d(
             y = renormalize_momentum_from_null_constraint(y, m)
         lam += dlambda
         steps_taken = step_idx + 1
+        if store_samples and all(math.isfinite(float(value)) for value in y):
+            post_terminal = y[1] < r_cap or y[1] > r_escape
+            if steps_taken % stride == 0 or post_terminal:
+                r_samples.append(float(y[1]))
+                t_samples.append(float(y[0]))
+                theta_samples.append(float(y[2]))
+                vt_samples.append(float(y[4]))
+                vphi_samples.append(float(y[7]))
     else:
         termination_r = float(y[1]) if len(y) > 1 else float("nan")
         termination_lambda = lam
@@ -116,6 +130,8 @@ def trace_null_geodesic_3d(
         r_samples = [float(y[1])]
         t_samples = [float(y[0])]
         theta_samples = [float(y[2])]
+        vt_samples = [float(y[4])]
+        vphi_samples = [float(y[7])]
     r_min = r_min if math.isfinite(r_min) else float("nan")
 
     return GeodesicTraceResult(
@@ -127,5 +143,7 @@ def trace_null_geodesic_3d(
         r_samples=r_samples,
         t_samples=t_samples,
         theta_samples=theta_samples,
+        vt_samples=vt_samples,
+        vphi_samples=vphi_samples,
         r_min=r_min,
     )

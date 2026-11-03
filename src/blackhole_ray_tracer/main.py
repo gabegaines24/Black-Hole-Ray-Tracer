@@ -19,6 +19,7 @@ from .phase1_tuning import PRESETS, format_step_f_report
 from .phase2_render import render_schwarzschild_3d_image
 from .phase2_report import format_phase2_report, render_config_from_preset
 from .phase2_types import DiskConfig, Phase2RenderConfig
+from .phase2_disk import disk_config_for_mass_spin
 from .native_phase2 import batch_native_available
 
 
@@ -92,6 +93,11 @@ def main() -> None:
         help="With --phase2-render: trace each ray via C extension (_native_phase2); requires build.",
     )
     parser.add_argument(
+        "--phase2-cuda",
+        action="store_true",
+        help="With --phase2-render and --phase2-native: prefer CUDA batch when lib is available.",
+    )
+    parser.add_argument(
         "--phase2-disk",
         action="store_true",
         help="With --phase2-render: enable the thin equatorial accretion disk overlay.",
@@ -115,9 +121,83 @@ def main() -> None:
         "--preview-frames", type=int, default=None,
         help="Stop after N frames in --phase2-preview (for benchmarks/testing).",
     )
+    parser.add_argument(
+        "--phase3-render",
+        action="store_true",
+        help="Phase 3: Kerr Boyer-Lindquist pinhole PPM (Python integrator).",
+    )
+    parser.add_argument(
+        "--phase3-report",
+        action="store_true",
+        help="Phase 3: print Kerr presets and single-ray benchmark.",
+    )
+    parser.add_argument(
+        "--phase3-out",
+        type=str,
+        default="phase3_kerr.ppm",
+        help="Output PPM for --phase3-render",
+    )
+    parser.add_argument(
+        "--phase3-preset",
+        choices=("fast", "balanced", "quality"),
+        default=None,
+        help="Phase 3: use fast/balanced/quality preset with --phase3-render.",
+    )
+    parser.add_argument(
+        "--spin",
+        type=float,
+        default=0.5,
+        help="Kerr spin parameter a/M for Phase 3 commands.",
+    )
+    parser.add_argument(
+        "--phase3-disk",
+        action="store_true",
+        help="With --phase3-render: enable spin-dependent equatorial disk overlay.",
+    )
     args = parser.parse_args()
 
     console = Console()
+    if args.phase3_report:
+        from .phase3_report import format_phase3_report
+
+        console.print(format_phase3_report(m=1.0, spin=args.spin))
+        return
+    if args.phase3_render:
+        from .phase3_render import render_kerr_image
+        from .phase3_report import render_config_from_preset as phase3_render_config_from_preset
+        from .phase3_types import KerrRenderConfig
+
+        if args.phase3_preset is not None:
+            phase3_cfg = phase3_render_config_from_preset(
+                args.phase3_preset, m=1.0, spin=args.spin, sky_mode="gradient"
+            )
+            if args.phase3_disk:
+                phase3_cfg = replace(
+                    phase3_cfg, disk=disk_config_for_mass_spin(1.0, args.spin)
+                )
+        else:
+            phase3_cfg = KerrRenderConfig(
+                width=args.img_width,
+                height=args.img_height,
+                m=1.0,
+                spin=args.spin,
+                dlambda=0.08,
+                max_steps=8000,
+                disk=disk_config_for_mass_spin(1.0, args.spin)
+                if args.phase3_disk
+                else None,
+            )
+        rgb, stats = render_kerr_image(phase3_cfg)
+        write_ppm_rgb(args.phase3_out, rgb)
+        preset_note = (
+            f", preset [bold]{args.phase3_preset}[/bold]" if args.phase3_preset else ""
+        )
+        console.print(
+            f"Phase 3: wrote [bold]{args.phase3_out}[/bold] "
+            f"({phase3_cfg.width}x{phase3_cfg.height} PPM, spin={phase3_cfg.spin})"
+            f"{preset_note}; stats {stats}"
+        )
+        return
     if args.phase2_preview:
         from .preview import run_preview, _build_config  # local import to avoid matplotlib at startup
         use_native = not getattr(args, "no_native", False)
@@ -127,7 +207,11 @@ def main() -> None:
             )
             use_native = False
         preview_cfg = _build_config(
-            args.phase2_preset, args.img_width, args.img_height, use_native
+            args.phase2_preset,
+            args.img_width,
+            args.img_height,
+            use_native,
+            disk=args.phase2_disk,
         )
         run_preview(preview_cfg, target_fps=args.preview_fps, max_frames=args.preview_frames)
         return
@@ -136,32 +220,41 @@ def main() -> None:
         return
     if args.phase2_render:
         if args.phase2_preset is not None:
-            cfg = render_config_from_preset(
+            phase2_cfg = render_config_from_preset(
                 args.phase2_preset,
                 m=1.0,
                 sky_mode="gradient",
                 use_native_phase2=args.phase2_native,
             )
+            if args.phase2_cuda:
+                phase2_cfg = replace(phase2_cfg, use_cuda_batch=True)
             if args.phase2_disk:
-                cfg = replace(cfg, disk=DiskConfig())
+                phase2_cfg = replace(phase2_cfg, disk=DiskConfig())
             if args.phase2_ml_gate is not None:
-                cfg = replace(cfg, ml_gate_model_path=args.phase2_ml_gate)
+                phase2_cfg = replace(
+                    phase2_cfg, ml_gate_model_path=args.phase2_ml_gate
+                )
         else:
-            cfg = Phase2RenderConfig(
+            phase2_cfg = Phase2RenderConfig(
                 width=args.img_width,
                 height=args.img_height,
                 m=1.0,
                 dlambda=0.06,
                 max_steps=8000,
                 use_native_phase2=args.phase2_native,
+                use_cuda_batch=args.phase2_cuda,
                 disk=DiskConfig() if args.phase2_disk else None,
                 ml_gate_model_path=args.phase2_ml_gate,
             )
-        rgb, stats = render_schwarzschild_3d_image(cfg)
+        rgb, stats = render_schwarzschild_3d_image(phase2_cfg)
         write_ppm_rgb(args.phase2_out, rgb)
-        preset_note = f", preset [bold]{args.phase2_preset}[/bold]" if args.phase2_preset else ""
+        preset_note = (
+            f", preset [bold]{args.phase2_preset}[/bold]" if args.phase2_preset else ""
+        )
         console.print(
-            f"Phase 2: wrote [bold]{args.phase2_out}[/bold] ({cfg.width}x{cfg.height} PPM){preset_note}; stats {stats}"
+            f"Phase 2: wrote [bold]{args.phase2_out}[/bold] "
+            f"({phase2_cfg.width}x{phase2_cfg.height} PPM)"
+            f"{preset_note}; stats {stats}"
         )
         return
     if args.phase1_step_f:

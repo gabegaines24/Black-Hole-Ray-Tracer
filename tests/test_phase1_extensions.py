@@ -4,11 +4,18 @@ from blackhole_ray_tracer.phase1 import (
     RayStatus,
     batch_schwarzschild_rays,
     format_step_d_table,
+    run_rk4_sanity,
     step_b_trajectory_is_finite,
     trace_single_schwarzschild_ray,
 )
 from blackhole_ray_tracer.phase1_image import render_einstein_ring_image
 from blackhole_ray_tracer.phase1_tuning import format_step_f_report
+
+
+def test_run_rk4_sanity_energy_drift_bounded() -> None:
+    max_err, mean_err = run_rk4_sanity(dt=0.02, total_time=8.0, omega=1.0)
+    assert max_err < 0.05
+    assert mean_err < 0.02
 
 
 def test_batch_schwarzschild_rays_returns_expected_rows() -> None:
