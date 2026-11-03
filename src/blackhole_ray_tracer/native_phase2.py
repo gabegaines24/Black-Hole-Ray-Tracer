@@ -8,6 +8,8 @@ import numpy as np
 
 from .phase1 import RayStatus
 
+_raw_trace: Any | None
+_raw_batch_trace: Any | None
 try:
     from blackhole_ray_tracer._native_phase2 import (
         schwarzschild_phase2_trace as _raw_trace,

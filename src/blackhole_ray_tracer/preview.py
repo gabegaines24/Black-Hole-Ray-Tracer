@@ -18,7 +18,7 @@ import time
 
 from dataclasses import replace
 
-from .native_phase2 import batch_native_available
+from .native_phase2 import batch_native_available, native_phase2_available
 from .native_phase2_cuda import cuda_batch_available
 from .phase2_render import render_schwarzschild_3d_image
 from .phase2_report import render_config_from_preset, PRESETS
@@ -60,7 +60,7 @@ def preview_backend_label(cfg: Phase2RenderConfig) -> str:
     """Return selected backend label without opening a GUI."""
     if not cfg.use_native_phase2:
         return "python"
-    if cfg.use_cuda_batch and cuda_batch_available():
+    if (cfg.use_cuda_batch or cfg.use_cuda_phase2) and cuda_batch_available():
         return "cuda_batch"
     if batch_native_available():
         return "native_batch"
@@ -69,6 +69,17 @@ def preview_backend_label(cfg: Phase2RenderConfig) -> str:
 
 def render_preview_frame(cfg: Phase2RenderConfig):
     """Render one preview frame for GUI or headless smoke use."""
+    if (
+        cfg.use_native_phase2
+        and not native_phase2_available()
+        and not cuda_batch_available()
+    ):
+        cfg = replace(
+            cfg,
+            use_native_phase2=False,
+            use_cuda_batch=False,
+            use_cuda_phase2=False,
+        )
     return render_schwarzschild_3d_image(cfg)
 
 
@@ -82,8 +93,8 @@ def run_preview(
     Press Ctrl-C or close the window to exit.
     """
     try:
-        import matplotlib.pyplot as plt
-        import matplotlib.animation as animation
+        import matplotlib.pyplot as plt  # type: ignore[import-not-found]
+        import matplotlib.animation as animation  # type: ignore[import-not-found]
     except ImportError as exc:
         raise SystemExit(
             "matplotlib is required for the preview. "

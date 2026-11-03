@@ -20,6 +20,7 @@ class RenderStats(TypedDict, total=False):
     backend: str
     surrogate_frac: float
     spin: float
+    supersample: int
 
 
 def _validate_render_parameters(
@@ -92,6 +93,9 @@ class Phase2RenderConfig:
     use_native_phase2: bool = False
     # If True (with use_native_phase2), prefer CUDA batch when lib is available.
     use_cuda_batch: bool = False
+    # Backward-compatible alias for older CLI/config callers.
+    use_cuda_phase2: bool = False
+    supersample: int = 1
     # Optional thin accretion disk.  None = disabled.
     disk: DiskConfig | None = None
     # Optional Phase 3 ML surrogate gate model path. Missing path falls back to RK4.
@@ -111,6 +115,12 @@ class Phase2RenderConfig:
             r_horizon_epsilon=self.r_horizon_epsilon,
             horizon_radius=2.0 * self.m,
         )
+        if (
+            isinstance(self.supersample, bool)
+            or not isinstance(self.supersample, int)
+            or self.supersample <= 0
+        ):
+            raise ValueError("Supersample must be a positive integer.")
         if self.sky_mode not in {"gradient", "flat"}:
             raise ValueError("sky_mode must be 'gradient' or 'flat'.")
 
