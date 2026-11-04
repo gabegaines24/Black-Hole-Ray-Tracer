@@ -46,12 +46,35 @@ def _can_compile_cpp_stdlib() -> bool:
         o = Path(td) / "probe.o"
         p.write_text("#include <cstddef>\nint main() { return 0; }\n", encoding="utf-8")
         proc = subprocess.run(
-            [cxx, "-c", str(p), "-o", str(o)],
+            [cxx, *_macos_cxx_include_args(), "-c", str(p), "-o", str(o)],
             capture_output=True,
             text=True,
             check=False,
         )
     return proc.returncode == 0
+
+
+def _macos_cxx_include_args() -> list[str]:
+    if sys.platform != "darwin":
+        return []
+
+    xcrun = shutil.which("xcrun")
+    if xcrun is None:
+        return []
+
+    proc = subprocess.run(
+        [xcrun, "--sdk", "macosx", "--show-sdk-path"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return []
+
+    include_dir = Path(proc.stdout.strip()) / "usr" / "include" / "c++" / "v1"
+    if not include_dir.is_dir():
+        return []
+    return ["-nostdinc++", "-isystem", str(include_dir)]
 
 
 def should_build_native() -> bool:
@@ -172,7 +195,8 @@ if should_build_native():
     from setuptools.command.build_ext import build_ext
 
     native_include_dirs = [src("kernel", "include"), get_include()]
-    native_libraries = ["c++", "c++abi"] if sys.platform == "darwin" else ["stdc++"]
+    native_compile_args = _macos_cxx_include_args()
+    native_libraries = [] if sys.platform == "darwin" else ["stdc++"]
     ext_modules = [
         Extension(
             "blackhole_ray_tracer._native_phase2",
@@ -184,6 +208,7 @@ if should_build_native():
             ],
             include_dirs=native_include_dirs,
             libraries=native_libraries,
+            extra_compile_args=native_compile_args,
             language="c++",
         ),
         Extension(
@@ -196,6 +221,7 @@ if should_build_native():
             ],
             include_dirs=native_include_dirs,
             libraries=native_libraries,
+            extra_compile_args=native_compile_args,
             language="c++",
         ),
     ]
