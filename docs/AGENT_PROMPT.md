@@ -74,8 +74,9 @@ Batch output arrays: `status(N,int32)`, `steps_taken(N,int32)`, `termination_r(N
 ### Toolchain reminder
 
 ```
-uv sync --group dev               # Windows (no native build by default)
-BLACKHOLE_BUILD_NATIVE=1 uv sync  # Linux/macOS or Windows with MSVC
+uv sync --group dev                         # source-only development
+BLACKHOLE_BUILD_NATIVE=1 uv build --wheel   # compiled CPU extensions
+uv pip install dist/*.whl                   # install native wheel
 uv run pytest
 uv run ruff check src tests
 ```

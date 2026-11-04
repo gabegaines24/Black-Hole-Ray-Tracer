@@ -74,7 +74,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 **Acceptance**
 
 - `make -C kernel` builds **`harmonic_demo`** and **`schwarzschild_demo`** where `cc`/`gcc`/`clang` exists.
-- **`uv pip install -e .` / `uv sync`** rebuilds **`_native_phase2`** where a suitable C++/C toolchain is configured ( MSVC / gcc / clang ).
+- **`BLACKHOLE_BUILD_NATIVE=1 uv build --wheel`** builds `_native_phase2` and `_native_phase3`; install wheel before native parity tests.
 - Full `pytest` run passes (kernel parity tests skip without a toolchain or when `SKIP_KERNEL_TESTS=1`; native bridge parity skips without the compiled extension).
 - SoA batched bridge API remains future work ([`STATE_API.md`](./STATE_API.md)).
 

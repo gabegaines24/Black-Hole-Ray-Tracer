@@ -159,6 +159,10 @@ static int inverse_metric(const double *g, double *g_inv) {
 
 static int christoffel(int mu, int a_idx, int b_idx, double r, double theta,
                        double m, double spin, double *value) {
+  if (r <= outer_horizon(m, spin)) {
+    *value = 0.0;
+    return 1;
+  }
   double g[16];
   double g_inv[16];
   double d_a[16];

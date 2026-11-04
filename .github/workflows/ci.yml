@@ -29,13 +29,32 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Build native extension (Linux)
+      - name: Install test dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y build-essential
-          BLACKHOLE_BUILD_NATIVE=1 uv sync --dev
+          uv sync --dev
+
+      - name: Build native wheel (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          rm -rf build dist blackhole_ray_tracer.egg-info .native-wheel-venv
+          BLACKHOLE_BUILD_NATIVE=1 uv build --wheel
         env:
           BLACKHOLE_BUILD_NATIVE: "1"
+
+      - name: Test native wheel imports and parity (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          WHEEL="$(find dist -maxdepth 1 -type f -name '*.whl' -print -quit)"
+          test -n "$WHEEL"
+          uv venv .native-wheel-venv
+          uv pip install --python .native-wheel-venv/bin/python "$WHEEL" pytest
+          BLACKHOLE_REQUIRE_NATIVE=1 .native-wheel-venv/bin/python -m pytest \
+            tests/test_native_extension_smoke.py \
+            tests/test_bridge_native_phase2.py \
+            tests/test_bridge_native_phase3.py \
+            -q --tb=short
 
       - name: Install (without native extension)
         if: runner.os != 'Linux'
@@ -43,8 +62,6 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -q --tb=short
-        env:
-          BLACKHOLE_BUILD_NATIVE: "1"
 
   kernel:
     name: "Kernel C parity (ubuntu-latest)"

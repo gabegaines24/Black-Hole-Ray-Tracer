@@ -84,7 +84,7 @@ uv sync --group ml
 ## Development
 
 - **Git contributor email:** use **`gabegaines24@gmail.com`** (verified on GitHub for contribution graph credit). Repo-local: `git config user.email gabegaines24@gmail.com`.
-- **Native Phase 2 extension:** On **Linux/macOS**, `uv sync` builds **`blackhole_ray_tracer._native_phase2`** when compilers are installed. On **Windows**, compiling is **opt‑in**: install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), then `BLACKHOLE_BUILD_NATIVE=1 uv sync`. Otherwise the package installs without the extension; `tests/test_bridge_native_phase2.py` skips accordingly. Unix users can disable with `BLACKHOLE_SKIP_NATIVE=1 uv sync`.
+- **Native Phase 2/3 extensions:** Build a compiled wheel with `BLACKHOLE_BUILD_NATIVE=1 uv build --wheel`, then install it with `uv pip install dist/*.whl`. Use that wheel for `--phase2-native`, Kerr native paths, and native parity tests. `uv sync` remains suitable for source-only development. Windows requires [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/). Set `BLACKHOLE_SKIP_NATIVE=1` to disable native builds.
 - **CUDA batch library (optional):** Set `BLACKHOLE_BUILD_CUDA=1` when `nvcc` is on `PATH` to build `libbh_rt_phase2_cuda.so` during install. Override arch with `BLACKHOLE_CUDA_ARCH=sm_89`. Or build standalone: `make -C kernel/cuda cuda_batch`. Use `--phase2-cuda` with `--phase2-render` when the library and a CUDA GPU are available.
 - Lint: `uv run --group dev ruff check .`
 - Type check: `uv run --group dev mypy src`
