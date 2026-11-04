@@ -1,14 +1,14 @@
 """Interactive preview loop: renders the black hole scene in a matplotlib window.
 
-Uses the native batch kernel when the extension is available, falling back to
-the Python integrator automatically.  Designed for a quick visual sanity check
-during development — not a finished GUI.
+Uses the best available batch backend by default (CUDA → native → Python).
+Designed for a quick visual sanity check during development — not a finished GUI.
 
 Usage
 -----
     uv run python -m blackhole_ray_tracer.preview
     uv run python -m blackhole_ray_tracer.preview --preset balanced --fps 4
-    uv run python -m blackhole_ray_tracer.preview --width 48 --height 48
+    uv run python -m blackhole_ray_tracer.preview --width 48 --height 48 --disk
+    uv run streamlit run src/blackhole_ray_tracer/streamlit_app.py
 """
 
 from __future__ import annotations
@@ -16,75 +16,17 @@ from __future__ import annotations
 import argparse
 import time
 
-from dataclasses import replace
-
-from .native_phase2 import batch_native_available, native_phase2_available
-from .native_phase2_cuda import cuda_batch_available
 from .phase2_render import render_schwarzschild_3d_image
-from .phase2_report import render_config_from_preset, PRESETS
-from .phase2_types import DiskConfig, Phase2RenderConfig
-
-_DEFAULT_WIDTH = 48
-_DEFAULT_HEIGHT = 48
-_DEFAULT_PRESET = "fast"
-
-
-def _build_config(
-    preset: str | None,
-    width: int,
-    height: int,
-    use_native: bool,
-    *,
-    disk: bool = False,
-    use_cuda: bool = False,
-) -> Phase2RenderConfig:
-    if preset is not None:
-        cfg = render_config_from_preset(preset, use_native_phase2=use_native)
-    else:
-        cfg = Phase2RenderConfig(
-            width=width,
-            height=height,
-            m=1.0,
-            dlambda=0.1,
-            max_steps=4000,
-            use_native_phase2=use_native,
-        )
-    if use_cuda:
-        cfg = replace(cfg, use_cuda_batch=True)
-    if disk:
-        cfg = replace(cfg, disk=DiskConfig())
-    return cfg
-
-
-def preview_backend_label(cfg: Phase2RenderConfig) -> str:
-    """Return selected backend label without opening a GUI."""
-    if not cfg.use_native_phase2:
-        return "python"
-    if (cfg.use_cuda_batch or cfg.use_cuda_phase2) and cuda_batch_available():
-        return "cuda_batch"
-    if batch_native_available():
-        return "native_batch"
-    return "python"
-
-
-def render_preview_frame(cfg: Phase2RenderConfig):
-    """Render one preview frame for GUI or headless smoke use."""
-    if (
-        cfg.use_native_phase2
-        and not native_phase2_available()
-        and not cuda_batch_available()
-    ):
-        cfg = replace(
-            cfg,
-            use_native_phase2=False,
-            use_cuda_batch=False,
-            use_cuda_phase2=False,
-        )
-    return render_schwarzschild_3d_image(cfg)
+from .preview_config import (
+    add_preview_cli_args,
+    build_preview_config,
+    describe_requested_backend,
+    preview_args_from_namespace,
+)
 
 
 def run_preview(
-    cfg: Phase2RenderConfig,
+    cfg,
     target_fps: float = 2.0,
     max_frames: int | None = None,
 ) -> None:
@@ -93,29 +35,25 @@ def run_preview(
     Press Ctrl-C or close the window to exit.
     """
     try:
-        import matplotlib.pyplot as plt  # type: ignore[import-not-found]
-        import matplotlib.animation as animation  # type: ignore[import-not-found]
+        import matplotlib.pyplot as plt
+        import matplotlib.animation as animation
     except ImportError as exc:
         raise SystemExit(
             "matplotlib is required for the preview. "
-            "Install it with: uv add matplotlib"
+            "Install it with: uv sync --group viz"
         ) from exc
 
-    backend_label = preview_backend_label(cfg)
-    disk_label = "disk" if cfg.disk is not None else "no_disk"
-    print(
-        f"[preview] {cfg.width}x{cfg.height}  backend={backend_label}  "
-        f"{disk_label}  target_fps={target_fps}"
-    )
+    backend_label = describe_requested_backend(cfg)
+    print(f"[preview] {cfg.width}x{cfg.height}  backend={backend_label}  target_fps={target_fps}")
 
     fig, ax = plt.subplots(figsize=(5, 5))
-    ax.set_title(
-        f"Phase 2 Schwarzschild preview — {cfg.width}x{cfg.height} ({backend_label})"
-    )
+    title = f"Phase 2 Schwarzschild preview — {cfg.width}x{cfg.height}"
+    if cfg.disk is not None:
+        title += "  [disk]"
+    ax.set_title(title)
     ax.axis("off")
 
-    # First frame so we can create the AxesImage
-    rgb, stats = render_preview_frame(cfg)
+    rgb, stats = render_schwarzschild_3d_image(cfg)
     im = ax.imshow(rgb, origin="upper", interpolation="nearest", vmin=0.0, vmax=1.0)
     info_text = ax.text(
         0.01, 0.99, "", transform=ax.transAxes,
@@ -128,7 +66,7 @@ def run_preview(
 
     def update(_frame: int) -> tuple:
         t0 = time.perf_counter()
-        rgb_new, st = render_preview_frame(cfg)
+        rgb_new, st = render_schwarzschild_3d_image(cfg)
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         total_s = time.perf_counter() - start_time[0]
         frame_count[0] += 1
@@ -162,35 +100,18 @@ def main(argv: list[str] | None = None) -> None:
         description="Interactive Schwarzschild 3D preview (matplotlib FuncAnimation)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--preset", choices=list(PRESETS.keys()), default=None,
-                        help="Use a named render preset (overrides --width/--height).")
-    parser.add_argument("--width",  type=int, default=_DEFAULT_WIDTH,
-                        help="Image width in pixels.")
-    parser.add_argument("--height", type=int, default=_DEFAULT_HEIGHT,
-                        help="Image height in pixels.")
+    add_preview_cli_args(parser)
     parser.add_argument("--fps", type=float, default=2.0,
                         help="Target animation frames per second.")
     parser.add_argument("--max-frames", type=int, default=None,
                         help="Stop after this many frames (useful for benchmarks).")
-    parser.add_argument("--no-native", action="store_true",
-                        help="Force Python integrator even if the native extension is present.")
-    parser.add_argument("--disk", action="store_true",
-                        help="Enable the thin equatorial accretion disk overlay.")
-    parser.add_argument("--cuda", action="store_true",
-                        help="Prefer CUDA batch kernel when available (with native path).")
     args = parser.parse_args(argv)
 
-    use_native = not args.no_native
-    if use_native and not batch_native_available():
-        print(
-            "[preview] Native extension not available — using Python integrator. "
-            "Build with BLACKHOLE_BUILD_NATIVE=1 for faster renders."
-        )
-        use_native = False
+    build_args = preview_args_from_namespace(args)
+    cfg, warnings = build_preview_config(build_args)
+    for msg in warnings:
+        print(f"[preview] {msg}")
 
-    cfg = _build_config(
-        args.preset, args.width, args.height, use_native, disk=args.disk, use_cuda=args.cuda
-    )
     run_preview(cfg, target_fps=args.fps, max_frames=args.max_frames)
 
 

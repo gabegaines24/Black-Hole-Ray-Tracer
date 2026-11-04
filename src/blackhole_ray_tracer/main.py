@@ -17,7 +17,6 @@ from .phase1_tuning import PRESETS, format_step_f_report
 from .phase2_render import render_schwarzschild_3d_image
 from .phase2_report import format_phase2_report, render_config_from_preset
 from .phase2_types import DiskConfig, Phase2RenderConfig
-from .native_phase2 import batch_native_available
 
 
 def main() -> None:
@@ -92,7 +91,18 @@ def main() -> None:
     parser.add_argument(
         "--phase2-cuda",
         action="store_true",
-        help="With --phase2-render: trace rays via CUDA batch kernel; requires nvcc build.",
+        help="With --phase2-render: use GPU batch kernel (libbh_rt_phase2_cuda.so); requires nvcc build.",
+    )
+    parser.add_argument(
+        "--phase2-ml",
+        action="store_true",
+        help="With --phase2-render: use ML surrogate for far-field rays (see ml/runtime_gate.py).",
+    )
+    parser.add_argument(
+        "--ml-model-path",
+        type=str,
+        default=None,
+        help="Path to trained surrogate .npz (with --phase2-ml). Default: ml/models/surrogate.npz",
     )
     parser.add_argument(
         "--phase2-disk",
@@ -124,16 +134,25 @@ def main() -> None:
 
     console = Console()
     if args.phase2_preview:
-        from .preview import run_preview, _build_config  # local import to avoid matplotlib at startup
-        use_native = not getattr(args, "no_native", False)
-        if use_native and not batch_native_available():
-            console.print(
-                "[yellow]Native extension not available — using Python integrator.[/yellow]"
-            )
-            use_native = False
-        preview_cfg = _build_config(
-            args.phase2_preset, args.img_width, args.img_height, use_native
+        from .preview import run_preview
+        from .preview_config import PreviewBuildArgs, backend_from_phase2_flags, build_preview_config
+
+        build_args = PreviewBuildArgs(
+            preset=args.phase2_preset,
+            width=args.img_width,
+            height=args.img_height,
+            backend=backend_from_phase2_flags(
+                native=args.phase2_native,
+                cuda=args.phase2_cuda,
+                ml=args.phase2_ml,
+            ),
+            disk=args.phase2_disk,
+            ml_model_path=args.ml_model_path,
+            supersample=args.supersample,
         )
+        preview_cfg, warnings = build_preview_config(build_args)
+        for msg in warnings:
+            console.print(f"[yellow]{msg}[/yellow]")
         run_preview(preview_cfg, target_fps=args.preview_fps, max_frames=args.preview_frames)
         return
     if args.phase2_report:
@@ -146,7 +165,9 @@ def main() -> None:
                 m=1.0,
                 sky_mode="gradient",
                 use_native_phase2=args.phase2_native,
-                use_cuda_phase2=args.phase2_cuda,
+                use_cuda_batch=args.phase2_cuda,
+                use_ml_surrogate=args.phase2_ml,
+                ml_model_path=args.ml_model_path,
             )
             if args.phase2_disk:
                 cfg = Phase2RenderConfig(
@@ -163,7 +184,9 @@ def main() -> None:
                     r_horizon_epsilon=cfg.r_horizon_epsilon,
                     sky_mode=cfg.sky_mode,
                     use_native_phase2=cfg.use_native_phase2,
-                    use_cuda_phase2=cfg.use_cuda_phase2,
+                    use_cuda_batch=cfg.use_cuda_batch,
+                    use_ml_surrogate=cfg.use_ml_surrogate,
+                    ml_model_path=cfg.ml_model_path,
                     disk=DiskConfig(),
                 )
         else:
@@ -174,7 +197,9 @@ def main() -> None:
                 dlambda=0.06,
                 max_steps=8000,
                 use_native_phase2=args.phase2_native,
-                use_cuda_phase2=args.phase2_cuda,
+                use_cuda_batch=args.phase2_cuda,
+                use_ml_surrogate=args.phase2_ml,
+                ml_model_path=args.ml_model_path,
                 disk=DiskConfig() if getattr(args, "phase2_disk", False) else None,
                 supersample=getattr(args, "supersample", 1),
             )

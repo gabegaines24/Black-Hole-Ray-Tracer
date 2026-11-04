@@ -9,6 +9,7 @@ dependencies = ["numpy>=2.2.0", "rich>=14.0.0"]
 
 [project.scripts]
 blackhole-ray-tracer = "blackhole_ray_tracer.main:main"
+blackhole-ray-tracer-dashboard = "blackhole_ray_tracer.streamlit_app:main"
 kerr-render = "blackhole_ray_tracer.phase3_driver:main"
 
 [dependency-groups]
