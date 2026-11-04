@@ -71,8 +71,9 @@ def render_schwarzschild_3d_image(
         and not cfg.use_native_phase2
     ):
         raise RuntimeError(
-            "Phase2RenderConfig CUDA batch mode is enabled but the CUDA batch library "
-            "is not available. Build with BLACKHOLE_BUILD_CUDA=1 uv sync (requires nvcc), "
+            "Phase2RenderConfig CUDA batch mode is enabled but CUDA batch library "
+            "`libbh_rt_phase2_cuda` is not available. Build with "
+            "BLACKHOLE_BUILD_CUDA=1 uv sync (requires nvcc), "
             "make -C kernel/cuda cuda_batch, or set BLACKHOLE_CUDA_LIB=<path>."
         )
 
