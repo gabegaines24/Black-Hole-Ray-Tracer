@@ -19,6 +19,8 @@ class RenderStats(TypedDict, total=False):
     frac_captured: float
     backend: str
     surrogate_frac: float
+    n_surrogate: int
+    n_integrated: int
     spin: float
     supersample: int
 
@@ -98,8 +100,15 @@ class Phase2RenderConfig:
     supersample: int = 1
     # Optional thin accretion disk.  None = disabled.
     disk: DiskConfig | None = None
-    # Optional Phase 3 ML surrogate gate model path. Missing path falls back to RK4.
+    # If True, route eligible rays through the ML runtime gate.
+    use_ml_surrogate: bool = False
+    # Optional surrogate model path. None uses ml/models/surrogate.npz.
+    ml_model_path: str | None = None
+    # Initial-radius threshold for surrogate routing.
+    ml_r_threshold: float = 10.0
+    # Backward-compatible alias for callers naming the gate model path.
     ml_gate_model_path: str | None = None
+
     def __post_init__(self) -> None:
         _validate_render_parameters(
             width=self.width,

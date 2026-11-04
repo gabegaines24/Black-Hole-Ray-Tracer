@@ -115,7 +115,12 @@ def render_config_from_preset(
     *,
     use_native_phase2: bool = False,
     use_cuda_phase2: bool = False,
+    use_cuda_batch: bool | None = None,
+    use_ml_surrogate: bool = False,
+    ml_model_path: str | None = None,
+    ml_r_threshold: float = 10.0,
 ) -> Phase2RenderConfig:
+    effective_cuda_batch = use_cuda_phase2 if use_cuda_batch is None else use_cuda_batch
     p = PRESETS[name]
     return Phase2RenderConfig(
         width=p["width"],
@@ -131,4 +136,8 @@ def render_config_from_preset(
         sky_mode=sky_mode,
         use_native_phase2=use_native_phase2,
         use_cuda_phase2=use_cuda_phase2,
+        use_cuda_batch=effective_cuda_batch,
+        use_ml_surrogate=use_ml_surrogate,
+        ml_model_path=ml_model_path,
+        ml_r_threshold=ml_r_threshold,
     )
