@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Setuptools glue for PyBind11 extension `blackhole_ray_tracer._native_phase2`.
+"""Setuptools glue for PyBind11 extensions `blackhole_ray_tracer._native_phase2` and `_native_phase3`.
 
 On Windows we **skip** compiling the native module unless `BLACKHOLE_BUILD_NATIVE`
 is truthy (`1`) so plain `uv sync` works without Visual C++. Set
@@ -171,6 +171,8 @@ if should_build_native():
     from pybind11 import get_include
     from setuptools.command.build_ext import build_ext
 
+    native_include_dirs = [src("kernel", "include"), get_include()]
+    native_libraries = ["c++", "c++abi"] if sys.platform == "darwin" else ["stdc++"]
     ext_modules = [
         Extension(
             "blackhole_ray_tracer._native_phase2",
@@ -180,13 +182,20 @@ if should_build_native():
                 src("kernel", "src", "bh_rt_schwarzschild_phase2.c"),
                 src("kernel", "src", "bh_rt_schwarzschild_phase2_batch.c"),
             ],
-            include_dirs=[
-                src("kernel", "include"),
-                get_include(),
+            include_dirs=native_include_dirs,
+            libraries=native_libraries,
+            language="c++",
+        ),
+        Extension(
+            "blackhole_ray_tracer._native_phase3",
+            [
+                src("bridge", "module_phase3.cpp"),
+                src("kernel", "src", "bh_rt_rk4.c"),
+                src("kernel", "src", "bh_rt_kerr_phase3.c"),
+                src("kernel", "src", "bh_rt_kerr_phase3_batch.c"),
             ],
-            libraries=(
-                ["c++", "c++abi"] if sys.platform == "darwin" else ["stdc++"]
-            ),
+            include_dirs=native_include_dirs,
+            libraries=native_libraries,
             language="c++",
         ),
     ]
