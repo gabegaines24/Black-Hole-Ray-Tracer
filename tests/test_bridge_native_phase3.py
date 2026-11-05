@@ -17,11 +17,16 @@ from blackhole_ray_tracer.native_phase3 import (
 )
 from blackhole_ray_tracer.phase2_batch import build_camera_y0
 from blackhole_ray_tracer.phase2_camera import (
-    initial_position_observer,
     make_camera_from_config,
     static_observer_null_direction,
 )
+from blackhole_ray_tracer.phase2_disk import detect_equatorial_crossing_state
 from blackhole_ray_tracer.phase2_types import Phase2RenderConfig
+from blackhole_ray_tracer.phase3_camera import (
+    initial_position_observer,
+    make_kerr_camera_from_config,
+    zamo_null_direction,
+)
 from blackhole_ray_tracer.phase3_geodesic import trace_kerr_null_geodesic
 
 
@@ -74,11 +79,94 @@ def test_native_phase3_batch_parity_4x4() -> None:
             y0[idx, :4],
             y0[idx, 4:],
             m=m,
-            a=a,
+            spin=a,
             dlambda=dlambda,
             max_steps=max_steps,
             r_escape=r_escape,
             store_samples=False,
         )
+        scalar = kerr_phase3_trace_native(
+            y0[idx], m, a, dlambda, max_steps, r_escape
+        )
         assert statuses[idx] == py.status
         assert int(batch["steps_taken"][idx]) == py.steps_taken
+        assert int(batch["status"][idx]) == int(scalar["status"])
+        assert int(batch["steps_taken"][idx]) == int(scalar["steps_taken"])
+        for name in ("termination_r", "r_min"):
+            actual = float(batch[name][idx])
+            expected = float(scalar[name])
+            if math.isnan(expected):
+                assert math.isnan(actual)
+            else:
+                assert math.isclose(actual, expected, rel_tol=0.0, abs_tol=1e-12)
+
+
+def test_native_phase3_batch_crossing_matches_python() -> None:
+    if not batch_native_phase3_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase3 not installed")
+
+    camera = make_kerr_camera_from_config(
+        1.0,
+        0.5,
+        r=30.0,
+        theta=np.pi / 3.0,
+        phi=0.0,
+        fov_deg=60.0,
+        width=8,
+        height=8,
+    )
+    y0 = np.concatenate(
+        [initial_position_observer(camera), zamo_null_direction(camera, 1.0, 0.0)]
+    )
+    batch = kerr_phase3_batch_native(
+        y0.reshape(1, 8), 1.0, 0.5, 0.05, 400, 80.0
+    )
+    py = trace_kerr_null_geodesic(
+        y0[:4],
+        y0[4:],
+        m=1.0,
+        spin=0.5,
+        dlambda=0.05,
+        max_steps=400,
+        r_escape=80.0,
+        store_samples=True,
+    )
+    expected = detect_equatorial_crossing_state(
+        py.theta_samples, py.r_samples, py.vt_samples, py.vphi_samples
+    )
+    scalar = kerr_phase3_trace_native(y0, 1.0, 0.5, 0.05, 400, 80.0)
+
+    assert expected is not None
+    assert ray_status_array_from_native(batch["status"])[0] == py.status
+    assert int(batch["steps_taken"][0]) == py.steps_taken
+    assert int(batch["status"][0]) == int(scalar["status"])
+    assert int(batch["steps_taken"][0]) == int(scalar["steps_taken"])
+    assert float(batch["termination_r"][0]) == float(scalar["termination_r"])
+    assert float(batch["r_min"][0]) == float(scalar["r_min"])
+    assert float(batch["eq_r_cross"][0]) == pytest.approx(
+        expected.r_cross, abs=2e-10
+    )
+
+def test_native_phase3_batch_boundaries() -> None:
+    if not batch_native_phase3_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase3 not installed")
+
+    empty = kerr_phase3_batch_native(
+        np.empty((0, 8), dtype=np.float64), 1.0, 0.5, 0.1, 0, 80.0
+    )
+    assert empty["status"].shape == (0,)
+    assert empty["steps_taken"].shape == (0,)
+    assert empty["termination_r"].shape == (0,)
+    assert empty["r_min"].shape == (0,)
+    assert empty["eq_r_cross"].shape == (0,)
+
+    cfg = Phase2RenderConfig(width=1, height=1, m=1.0, r_observer=30.0)
+    y0 = build_camera_y0(cfg)
+    batch = kerr_phase3_batch_native(y0, 1.0, 0.5, 0.1, 0, 80.0)
+    scalar = kerr_phase3_trace_native(y0[0], 1.0, 0.5, 0.1, 0, 80.0)
+
+    assert int(batch["status"][0]) == int(scalar["status"])
+    assert int(batch["steps_taken"][0]) == int(scalar["steps_taken"])
+    assert float(batch["termination_r"][0]) == float(scalar["termination_r"])
+    assert float(batch["r_min"][0]) == float(scalar["r_min"])
+    assert math.isnan(float(batch["eq_r_cross"][0]))
