@@ -69,14 +69,14 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | **Phase A harmonic parity** | C vs `phase1.run_rk4_sanity` | Done: [`kernel/src/demo_harmonic.c`](../kernel/src/demo_harmonic.c), `make -C kernel`, [`tests/test_kernel_harmonic_parity.py`](../tests/test_kernel_harmonic_parity.py) (skips if no C toolchain) |
 | **Schwarzschild \(2D equatorial\) kernel** | `u(\phi)=1/r` loop vs `phase1.trace_single_schwarzschild_ray` | Done: [`kernel/include/bh_rt_schwarzschild_u.h`](../kernel/include/bh_rt_schwarzschild_u.h), [`kernel/src/bh_rt_schwarzschild_u.c`](../kernel/src/bh_rt_schwarzschild_u.c), [`kernel/src/demo_schwarzschild_u.c`](../kernel/src/demo_schwarzschild_u.c), [`tests/test_kernel_schwarzschild_u_parity.py`](../tests/test_kernel_schwarzschild_u_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
 | **Schwarzschild / Phase 2 \(3D Christoffel\) kernel** | Match `phase2_geodesic` Python RHS + termination | Done: [`kernel/include/bh_rt_schwarzschild_phase2.h`](../kernel/include/bh_rt_schwarzschild_phase2.h), [`kernel/src/bh_rt_schwarzschild_phase2.c`](../kernel/src/bh_rt_schwarzschild_phase2.c), [`tests/test_kernel_phase2_parity.py`](../tests/test_kernel_phase2_parity.py) (skipped without a toolchain or when `SKIP_KERNEL_TESTS=1`) |
-| **`bridge/`** | pybind11 — single-ray Phase 3D trace (+ future batch API) | Started: [`bridge/module_phase2.cpp`](../bridge/module_phase2.cpp) → **`_native_phase2`**; optional **per-pixel** use from [`phase2_render.py`](../src/blackhole_ray_tracer/phase2_render.py) (`use_native_phase2`); pytest bridge parity skips if extension missing |
+| **`bridge/`** | pybind11 — single-ray and batched Phase 2/3 traces | Done: [`bridge/module_phase2.cpp`](../bridge/module_phase2.cpp), [`bridge/module_phase3.cpp`](../bridge/module_phase3.cpp), optional native bridge parity tests |
 
 **Acceptance**
 
 - `make -C kernel` builds **`harmonic_demo`** and **`schwarzschild_demo`** where `cc`/`gcc`/`clang` exists.
 - **`BLACKHOLE_BUILD_NATIVE=1 uv build --wheel`** builds `_native_phase2` and `_native_phase3`; install wheel before native parity tests.
 - Full `pytest` run passes (kernel parity tests skip without a toolchain or when `SKIP_KERNEL_TESTS=1`; native bridge parity skips without the compiled extension).
-- SoA batched bridge API remains future work ([`STATE_API.md`](./STATE_API.md)).
+- SoA batched bridge API is implemented for Kerr Phase 3; the Python boundary remains row-major and the kernel uses flat component-major work arrays ([`STATE_API.md`](./STATE_API.md)).
 
 ---
 
@@ -88,7 +88,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | Kerr null geodesic integrator (Python RK4) | Done | `phase3_geodesic.py` |
 | `KerrRenderConfig` + dispatcher | Done | `phase3_types.py`, `phase3_render.py` |
 | Kerr parity / E/L conservation tests | Done | `tests/test_phase3_kerr.py` |
-| Disk detection in native batch path (`eq_r_cross`) | Done | `kernel/.../batch.c`, `bridge/`, `phase2_render.py` |
+| Disk detection in native batch path (`eq_r_cross`) | Done: true SoA Kerr workspace, interpolated crossing output, `bridge/`, and `phase2_render.py` |
 | Anti-aliasing (supersample + box-average) | Done | `phase2_types.py` supersample field, `phase2_render.py`, `--aa` flag |
 | ML scaffold (schema, dataset, surrogate, gate) | Done | `ml/` |
 | ML end-to-end tests | Done | `tests/test_ml.py` |
