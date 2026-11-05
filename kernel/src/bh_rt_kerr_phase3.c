@@ -1,4 +1,5 @@
 #include "bh_rt_kerr_phase3.h"
+#include "bh_rt_kerr_phase3_internal.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -39,6 +40,10 @@ static double delta_value(double r, double m, double spin) {
 static double outer_horizon(double m, double spin) {
   const double a = spin_a(m, spin);
   return m + sqrt(fmax(m * m - a * a, 0.0));
+}
+
+double bh_rt_k3_outer_horizon(double m, double spin) {
+  return outer_horizon(m, spin);
 }
 
 static int valid_parameters(double r, double theta, double m, double spin) {
@@ -187,30 +192,33 @@ static int christoffel(int mu, int a_idx, int b_idx, double r, double theta,
   return isfinite(*value);
 }
 
-static int geodesic_rhs_values(const double *y, double m, double spin,
-                               int require_exterior, double *dy_out) {
-  if (!all_finite(y, BH_RT_KERR_N_STATE))
+int bh_rt_k3_rhs_components(
+    double r, double theta, double vt, double vr, double vtheta, double vphi,
+    double m, double spin, int require_exterior, double *dy_out) {
+  if (dy_out == NULL ||
+      !(isfinite(r) && isfinite(theta) && isfinite(vt) && isfinite(vr) &&
+        isfinite(vtheta) && isfinite(vphi) && isfinite(m) &&
+        isfinite(spin)))
     return 0;
   if (require_exterior) {
-    if (!valid_parameters(y[I_R], y[I_TH], m, spin))
+    if (!valid_parameters(r, theta, m, spin))
       return 0;
-  } else if (!valid_algebra_parameters(y[I_R], y[I_TH], m, spin)) {
+  } else if (!valid_algebra_parameters(r, theta, m, spin)) {
     return 0;
   }
 
-  dy_out[I_T] = y[4];
-  dy_out[I_R] = y[5];
-  dy_out[I_TH] = y[6];
-  dy_out[I_PH] = y[7];
+  dy_out[I_T] = vt;
+  dy_out[I_R] = vr;
+  dy_out[I_TH] = vtheta;
+  dy_out[I_PH] = vphi;
 
-  const double v[4] = {y[4], y[5], y[6], y[7]};
+  const double v[4] = {vt, vr, vtheta, vphi};
   for (int mu = 0; mu < BH_RT_KERR_N_COORD; ++mu) {
     double total = 0.0;
     for (int a_idx = 0; a_idx < BH_RT_KERR_N_COORD; ++a_idx) {
       for (int b_idx = 0; b_idx < BH_RT_KERR_N_COORD; ++b_idx) {
         double gamma = 0.0;
-        if (!christoffel(mu, a_idx, b_idx, y[I_R], y[I_TH], m, spin,
-                         &gamma))
+        if (!christoffel(mu, a_idx, b_idx, r, theta, m, spin, &gamma))
           return 0;
         total += gamma * v[a_idx] * v[b_idx];
       }
@@ -220,19 +228,28 @@ static int geodesic_rhs_values(const double *y, double m, double spin,
   return all_finite(dy_out, BH_RT_KERR_N_STATE);
 }
 
-static void renormalize_kerr_vr(double *y, double m, double spin) {
+static int geodesic_rhs_values(const double *y, double m, double spin,
+                               int require_exterior, double *dy_out) {
+  if (y == NULL || !all_finite(y, BH_RT_KERR_N_STATE))
+    return 0;
+  return bh_rt_k3_rhs_components(
+      y[I_R], y[I_TH], y[4], y[5], y[6], y[7], m, spin, require_exterior,
+      dy_out);
+}
+
+double bh_rt_k3_renormalized_vr(
+    double r, double theta, double vt, double vr, double vtheta, double vphi,
+    double m, double spin) {
   double g[16];
-  if (!valid_algebra_parameters(y[I_R], y[I_TH], m, spin) ||
-      !metric_values(y[I_R], y[I_TH], m, spin, g))
-    return;
+  if (!(isfinite(vt) && isfinite(vr) && isfinite(vtheta) &&
+        isfinite(vphi)) ||
+      !valid_algebra_parameters(r, theta, m, spin) ||
+      !metric_values(r, theta, m, spin, g))
+    return vr;
 
   const double g_rr = g[I_R * 4 + I_R];
   if (fabs(g_rr) < 1e-30 || !isfinite(g_rr))
-    return;
-  const double vt = y[4];
-  const double vr = y[5];
-  const double vtheta = y[6];
-  const double vphi = y[7];
+    return vr;
   const double other =
       g[I_T * 4 + I_T] * vt * vt +
       2.0 * g[I_T * 4 + I_PH] * vt * vphi +
@@ -242,8 +259,15 @@ static void renormalize_kerr_vr(double *y, double m, double spin) {
   if (inner < 0.0 && inner > -1e-8)
     inner = 0.0;
   if (inner < 0.0 || !isfinite(inner))
+    return vr;
+  return (vr >= 0.0 ? 1.0 : -1.0) * sqrt(inner);
+}
+
+static void renormalize_kerr_vr(double *y, double m, double spin) {
+  if (y == NULL)
     return;
-  y[5] = (vr >= 0.0 ? 1.0 : -1.0) * sqrt(inner);
+  y[5] = bh_rt_k3_renormalized_vr(
+      y[I_R], y[I_TH], y[4], y[5], y[6], y[7], m, spin);
 }
 
 static int rk4_step_kerr(double *y, double dlambda, double m, double spin) {
