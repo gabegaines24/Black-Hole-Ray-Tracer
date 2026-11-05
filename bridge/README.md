@@ -14,6 +14,8 @@ Design rules:
 |-----------------|-------------|----------------|
 | [`module_phase2.cpp`](module_phase2.cpp) | `bh_rt_schwarzschild_phase2_trace` (single-ray) | `native_phase2.schwarzschild_phase2_trace_native` |
 | [`module_phase2.cpp`](module_phase2.cpp) | `bh_rt_schwarzschild_phase2_batch_trace` (N-ray) | `native_phase2.schwarzschild_phase2_batch_native` |
+| [`module_phase3.cpp`](module_phase3.cpp) | `bh_rt_kerr_phase3_trace` (single-ray) | `native_phase3.kerr_phase3_trace_native` |
+| [`module_phase3.cpp`](module_phase3.cpp) | `bh_rt_kerr_phase3_batch_trace` (N-ray) | `native_phase3.kerr_phase3_batch_native` |
 
 ## Batch output contract
 

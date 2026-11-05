@@ -2,8 +2,10 @@
 
 /* Batched Kerr null-geodesic tracer (Boyer-Lindquist + RK4).
  *
- * Memory layout matches bh_rt_schwarzschild_phase2_batch_trace.
- * All rays share m, a, dlambda, max_steps, r_escape, r_horizon_epsilon. */
+ * Input layout is row-major double[N * 8], matching the Schwarzschild batch
+ * API. The kernel converts state and RK4 stages to flat component-major
+ * workspace arrays. All rays share m, a, dlambda, max_steps, r_escape,
+ * r_horizon_epsilon. */
 
 #ifdef __cplusplus
 extern "C" {

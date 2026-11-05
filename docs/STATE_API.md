@@ -1,4 +1,4 @@
-# Ray batch API (`kernel/` + `bridge/`)
+# Ray batch API (`kernel/` + `bridge/`, Schwarzschild Phase 2 and Kerr Phase 3)
 
 This file freezes the FFI contract used by C headers and PyBind11 bindings.
 Align all Python façades and C implementations with the names and types here.
@@ -42,9 +42,9 @@ void bh_rt_schwarzschild_phase2_trace(
 
 ---
 
-## Batch API (`bh_rt_schwarzschild_phase2_batch_trace`)
+## Batch API (`bh_rt_schwarzschild_phase2_batch_trace`, `bh_rt_kerr_phase3_batch_trace`)
 
-Header: [`kernel/include/bh_rt_schwarzschild_phase2_batch.h`](../kernel/include/bh_rt_schwarzschild_phase2_batch.h)
+Headers: [`kernel/include/bh_rt_schwarzschild_phase2_batch.h`](../kernel/include/bh_rt_schwarzschild_phase2_batch.h) and [`kernel/include/bh_rt_kerr_phase3_batch.h`](../kernel/include/bh_rt_kerr_phase3_batch.h)
 
 ### Input layout
 
@@ -72,8 +72,8 @@ y0[i*8 + 7] = v^phi
 | `out_eq_r_cross[i]`    | `double`   | `float64`   | r at first equatorial plane crossing (θ=π/2), NaN if none |
 
 The `eq_r_cross` output enables disk coloring in the batch render path without storing full
-per-ray trajectories. A sign change in `θ − π/2` between consecutive steps signals a crossing;
-the r value at the post-crossing step is stored.
+per-ray trajectories. A sign change in `θ − π/2` between consecutive accepted steps signals a
+crossing; the kernel linearly interpolates `r` between the two states.
 
 ### Shared scalars
 
@@ -90,9 +90,17 @@ out_r_min: np.ndarray         # shape (N,), dtype float64
 out_eq_r_cross: np.ndarray    # shape (N,), dtype float64  — NaN when no crossing
 ```
 
+### Kerr batch storage
+
+`bh_rt_kerr_phase3_batch_trace` accepts the same row-major `(N, 8)` input contract as the
+Schwarzschild batch API. After input copy, its RK4 state, stage, trial, and crossing values use
+flat component-major arrays. Active rays share each stage pass, while terminal rays leave later
+passes without per-ray state structs.
+
 ---
 
 ## Phase 1 SoA columns (2D equatorial batches — future)
+
 
 | Array       | Dtype     | Meaning |
 |-------------|-----------|---------|
