@@ -27,14 +27,13 @@ You are assisting on **blackhole_ray_tracer**, a Python-first numerical null-geo
 **C kernel** (`kernel/src/`, `kernel/include/`):
 - `bh_rt_rk4.c/.h` — generic RK4 step
 - `bh_rt_schwarzschild_phase2.c/.h` — single-ray 3D Schwarzschild trace
-- `bh_rt_schwarzschild_phase2_batch.c/.h` — N-ray SoA batch trace (outputs: status, steps_taken, termination_r, r_min, **eq_r_cross**)
+- `bh_rt_schwarzschild_phase2_batch.c/.h` — N-ray batch trace (status, steps_taken, termination_r, r_min, disk crossing observables)
 - `bh_rt_schwarzschild_phase2_internal.h` — shared step helpers (Christoffel, renormalize, etc.)
 - `bh_rt_status.h` — canonical `BH_RT_STATUS_*` int constants (0–3)
 - `kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu` — CUDA batch kernel (buildable via `kernel/cuda/Makefile`)
 
 **Bridge** (`bridge/`):
-- `module_phase2.cpp` — PyBind11 `_native_phase2` module; exposes both
-  `schwarzschild_phase2_trace` (single-ray) and `schwarzschild_phase2_batch_trace` (batch with `eq_r_cross`).
+- `module_phase2.cpp` — PyBind11 `_native_phase2` module; exposes scalar tracing and batch tracing with disk crossing observables.
 
 **Build**:
 - `setup.py` — builds `blackhole_ray_tracer._native_phase2`; optional on Windows
@@ -54,8 +53,8 @@ You are assisting on **blackhole_ray_tracer**, a Python-first numerical null-geo
 array, then calls `schwarzschild_phase2_batch_native()` (one C call for the whole image) when
 `cfg.use_native_phase2` is True and the extension is available. Falls back to the Python loop otherwise.
 
-The batch result now includes `eq_r_cross(N,float64)` — first equatorial crossing per ray — used for
-disk coloring in the native batch path when `cfg.disk` is set.
+The batch result includes `disk_hit`, `disk_r_cross`, `disk_vt`, and `disk_vph`.
+The `eq_r_cross` key remains a compatibility alias for `disk_r_cross`.
 
 Anti-aliasing: set `Phase2RenderConfig.supersample = 2` (or `--aa 2` CLI) to render at 2× resolution
 then box-average. Works for both Python and batch paths.
@@ -69,7 +68,8 @@ otherwise uses the Python Kerr integrator (`phase3_geodesic.trace_kerr_null_geod
 
 See `docs/STATE_API.md`. Status codes 0–3 match `phase1.RayStatus`.
 Batch output arrays: `status(N,int32)`, `steps_taken(N,int32)`, `termination_r(N,float64)`,
-`r_min(N,float64)`, `eq_r_cross(N,float64)`.
+`r_min(N,float64)`, `disk_hit(N,int32)`, `disk_r_cross(N,float64)`,
+`disk_vt(N,float64)`, `disk_vph(N,float64)`, and compatibility alias `eq_r_cross(N,float64)`.
 
 ### Toolchain reminder
 

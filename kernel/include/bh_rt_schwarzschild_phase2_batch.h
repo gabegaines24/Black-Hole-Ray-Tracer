@@ -33,7 +33,7 @@ extern "C" {
  * out_steps_taken   : int[N]         — steps consumed by each ray
  * out_termination_r : double[N]      — r coordinate at termination
  * out_r_min         : double[N]      — minimum r reached (NAN if never tracked)
- * out_eq_r_cross    : double[N]      — r at first equatorial (theta=pi/2) crossing, NAN if none */
+ * out_eq_r_cross    : double[N]      — interpolated first crossing r, NAN if none */
 void bh_rt_schwarzschild_phase2_batch_trace(
     const double *y0,
     int n,
@@ -47,6 +47,25 @@ void bh_rt_schwarzschild_phase2_batch_trace(
     double *out_termination_r,
     double *out_r_min,
     double *out_eq_r_cross);
+
+/* Trace with first-crossing disk observables. `out_disk_hit` is zero when no
+ * strict equatorial crossing occurs; other disk outputs are NAN then. */
+void bh_rt_schwarzschild_phase2_batch_trace_disk(
+    const double *y0,
+    int n,
+    double m,
+    double dlambda,
+    int max_steps,
+    double r_escape,
+    double r_horizon_epsilon,
+    int    *out_status,
+    int    *out_steps_taken,
+    double *out_termination_r,
+    double *out_r_min,
+    int    *out_disk_hit,
+    double *out_disk_r_cross,
+    double *out_disk_vt,
+    double *out_disk_vph);
 
 #ifdef __cplusplus
 }

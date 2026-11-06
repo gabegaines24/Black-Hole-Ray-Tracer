@@ -85,14 +85,16 @@ def schwarzschild_phase2_batch_native(
     y0_batch : float64 array, shape (N, 8)
         Initial states for N rays, each row (t, r, θ, φ, v^t, v^r, v^θ, v^φ).
 
-    Returns
-    -------
     dict with numpy arrays:
         status          (N,) int32   — BH_RT_STATUS_* codes
         steps_taken     (N,) int32
         termination_r   (N,) float64
         r_min           (N,) float64
-        eq_r_cross      (N,) float64 — first equatorial crossing r, NaN if none
+        disk_hit        (N,) int32   — first strict equatorial crossing
+        disk_r_cross    (N,) float64 — interpolated crossing radius
+        disk_vt         (N,) float64 — interpolated v^t
+        disk_vph        (N,) float64 — interpolated v^phi
+        eq_r_cross      (N,) float64 — compatibility alias for disk_r_cross
     """
     if _raw_batch_trace is None:
         raise RuntimeError(

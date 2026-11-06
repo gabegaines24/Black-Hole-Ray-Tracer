@@ -12,7 +12,7 @@ from .phase1 import RayStatus
 from .phase2_batch import build_camera_y0
 from .phase2_camera import make_camera_from_config, initial_position_observer, static_observer_null_direction
 from .phase2_disk import (
-    detect_equatorial_crossing,
+    detect_equatorial_crossing_state,
     disk_color_at_r,
     disk_hit_from_equatorial_crossing,
 )
@@ -66,11 +66,8 @@ def render_schwarzschild_3d_image(
     h, w = cfg.height, cfg.width
 
     use_cuda_requested = cfg.use_cuda_batch or cfg.use_cuda_phase2
-    if (
-        use_cuda_requested
-        and not cuda_batch_available()
-        and not cfg.use_native_phase2
-    ):
+    cuda_available = cuda_batch_available() if use_cuda_requested else False
+    if use_cuda_requested and not cuda_available:
         raise RuntimeError(
             "Phase2RenderConfig CUDA batch mode is enabled but CUDA batch library "
             "`libbh_rt_phase2_cuda` is not available. Build with "
@@ -81,7 +78,7 @@ def render_schwarzschild_3d_image(
     if (
         cfg.use_native_phase2
         and not native_phase2_available()
-        and not (use_cuda_requested and cuda_batch_available())
+        and not (use_cuda_requested and cuda_available)
     ):
         raise RuntimeError(
             "Phase2RenderConfig.use_native_phase2 is True but extension "
@@ -99,7 +96,7 @@ def render_schwarzschild_3d_image(
     n_cap = n_esc = n_other = 0
     backend = "python"
 
-    use_cuda_batch = use_cuda_requested and cuda_batch_available()
+    use_cuda_batch = use_cuda_requested and cuda_available
     use_cpu_batch = (
         cfg.use_native_phase2 and batch_native_available() and not use_cuda_batch
     )
@@ -135,7 +132,12 @@ def render_schwarzschild_3d_image(
         else:
             result = schwarzschild_phase2_batch_ml(y0, cfg)
         statuses = ray_status_array_from_native(result["status"])
-        eq_r_cross_arr: np.ndarray | None = result.get("eq_r_cross")
+        disk_hit_arr: np.ndarray | None = result.get("disk_hit")
+        disk_r_cross_arr: np.ndarray | None = result.get(
+            "disk_r_cross", result.get("eq_r_cross")
+        )
+        disk_vt_arr: np.ndarray | None = result.get("disk_vt")
+        disk_vph_arr: np.ndarray | None = result.get("disk_vph")
 
         disk = cfg.disk
         for j in range(h):
@@ -149,15 +151,24 @@ def render_schwarzschild_3d_image(
                 if (
                     disk is not None
                     and status != RayStatus.CAPTURED
-                    and eq_r_cross_arr is not None
+                    and disk_r_cross_arr is not None
+                    and (disk_hit_arr is None or int(disk_hit_arr[idx]) != 0)
                 ):
-                    r_cross = float(eq_r_cross_arr[idx])
+                    r_cross = float(disk_r_cross_arr[idx])
                     if math.isfinite(r_cross):
                         y0_ray = y0[idx]
+                        vt_cross = float(y0_ray[4])
+                        vph_cross = float(y0_ray[7])
+                        if disk_vt_arr is not None and math.isfinite(
+                            float(disk_vt_arr[idx])
+                        ):
+                            vt_cross = float(disk_vt_arr[idx])
+                        if disk_vph_arr is not None and math.isfinite(
+                            float(disk_vph_arr[idx])
+                        ):
+                            vph_cross = float(disk_vph_arr[idx])
                         dh = disk_hit_from_equatorial_crossing(
-                            r_cross, disk, cfg.m,
-                            vt=float(y0_ray[4]),
-                            vph=float(y0_ray[7]),
+                            r_cross, disk, cfg.m, vt=vt_cross, vph=vph_cross
                         )
                         if dh.hit:
                             dr, dg, db = disk_color_at_r(r_cross, dh.z_factor, disk)
@@ -219,6 +230,8 @@ def render_schwarzschild_3d_image(
                     status = ray_status_from_native_phase2(nt)
                     samples_theta: list[float] = []
                     samples_r: list[float] = []
+                    samples_vt: list[float] = []
+                    samples_vph: list[float] = []
                 else:
                     res = trace_null_geodesic_3d(
                         x0, v0,
@@ -233,24 +246,35 @@ def render_schwarzschild_3d_image(
                     if need_samples:
                         samples_theta = res.theta_samples
                         samples_r = res.r_samples
+                        samples_vt = res.vt_samples
+                        samples_vph = res.vphi_samples
                     else:
                         samples_theta = []
-                        samples_r = res.r_samples
+                        samples_r = []
+                        samples_vt = []
+                        samples_vph = []
 
-                # Disk detection (Python path only; batch path skips for now)
                 disk_drawn = False
                 if disk is not None and status != RayStatus.CAPTURED and samples_theta:
-                    found, r_cross = detect_equatorial_crossing(samples_theta, samples_r)
-                    if found:
+                    crossing = detect_equatorial_crossing_state(
+                        samples_theta, samples_r, samples_vt, samples_vph
+                    )
+                    if crossing is not None:
                         dh = disk_hit_from_equatorial_crossing(
-                            r_cross, disk, cfg.m, vt=float(v0[0]), vph=float(v0[3])
+                            crossing.r_cross,
+                            disk,
+                            cfg.m,
+                            vt=crossing.vt_cross,
+                            vph=crossing.vph_cross,
                         )
                         if dh.hit:
-                            dr, dg, db = disk_color_at_r(r_cross, dh.z_factor, disk)
+                            dr, dg, db = disk_color_at_r(
+                                crossing.r_cross, dh.z_factor, disk
+                            )
                             rgb[j, i, 0] = dr
                             rgb[j, i, 1] = dg
                             rgb[j, i, 2] = db
-                            n_esc += 1  # disk hits counted as "escaped" (not captured)
+                            n_esc += 1
                             disk_drawn = True
 
                 if not disk_drawn:

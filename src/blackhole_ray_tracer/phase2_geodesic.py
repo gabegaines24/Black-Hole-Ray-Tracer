@@ -68,6 +68,8 @@ def trace_null_geodesic_3d(
     r_samples: list[float] = []
     t_samples: list[float] = []
     theta_samples: list[float] = []
+    vt_samples: list[float] = []
+    vphi_samples: list[float] = []
     status = RayStatus.MAX_STEPS
     termination_r = float("nan")
     termination_lambda = 0.0
@@ -97,7 +99,8 @@ def trace_null_geodesic_3d(
             r_samples.append(r)
             t_samples.append(t)
             theta_samples.append(th)
-
+            vt_samples.append(vt)
+            vphi_samples.append(vph)
         y = rk4_step(null_geodesic_first_order, lam, y, dlambda, m)
         # Periodically project back onto null cone
         if step_idx % 4 == 0:
@@ -118,6 +121,8 @@ def trace_null_geodesic_3d(
         r_samples = [float(y[1])]
         t_samples = [float(y[0])]
         theta_samples = [float(y[2])]
+        vt_samples = [float(y[4])]
+        vphi_samples = [float(y[7])]
     r_min = r_min if math.isfinite(r_min) else float("nan")
 
     return GeodesicTraceResult(
@@ -129,5 +134,7 @@ def trace_null_geodesic_3d(
         r_samples=r_samples,
         t_samples=t_samples,
         theta_samples=theta_samples,
+        vt_samples=vt_samples,
+        vphi_samples=vphi_samples,
         r_min=r_min,
     )

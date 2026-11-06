@@ -27,10 +27,13 @@ Design rules:
 | `steps_taken` | `int32` | `(N,)` | Steps consumed |
 | `termination_r` | `float64` | `(N,)` | r coordinate at termination |
 | `r_min` | `float64` | `(N,)` | Minimum r reached (NaN if not tracked) |
-| `eq_r_cross` | `float64` | `(N,)` | r at first equatorial crossing, NaN if none |
+| `disk_hit` | `int32` | `(N,)` | 1 when first strict equatorial crossing exists |
+| `disk_r_cross` | `float64` | `(N,)` | Interpolated r at first crossing |
+| `disk_vt` | `float64` | `(N,)` | Interpolated v^t at first crossing |
+| `disk_vph` | `float64` | `(N,)` | Interpolated v^phi at first crossing |
+| `eq_r_cross` | `float64` | `(N,)` | Compatibility alias for `disk_r_cross` |
 
-`eq_r_cross` enables disk coloring in the batch render path (`phase2_render.py`) without
-storing per-ray trajectories.
+Disk values are NaN when no crossing occurs. `disk_hit` is zero in that case.
 
 ## Build
 

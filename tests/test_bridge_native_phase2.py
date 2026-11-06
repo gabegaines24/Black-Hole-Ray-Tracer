@@ -20,6 +20,8 @@ from blackhole_ray_tracer.phase2_camera import (
     initial_position_observer,
     static_observer_null_direction,
 )
+from blackhole_ray_tracer.phase2_disk import detect_equatorial_crossing_state
+
 from blackhole_ray_tracer.phase2_geodesic import trace_null_geodesic_3d
 
 STATUS_NATIVE_TO_PY = {
@@ -94,3 +96,68 @@ def test_native_phase2_batch_parity_4x4() -> None:
         c_tr = float(batch_result["termination_r"][idx])
         assert math.isclose(c_tr, py.termination_r, rel_tol=0.0, abs_tol=1e-9), \
             f"ray {idx}: termination_r {c_tr} != {py.termination_r}"
+
+
+def test_native_phase2_batch_exposes_disk_crossing_state() -> None:
+    if not batch_native_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase2 not installed")
+
+    cam = make_camera_from_config(
+        1.0,
+        r=30.0,
+        theta=np.pi / 3.0,
+        phi=0.0,
+        fov_deg=60.0,
+        width=4,
+        height=4,
+    )
+    x0 = initial_position_observer(cam)
+    v0 = static_observer_null_direction(cam, 0.0, -0.75)
+    y0 = np.concatenate([x0, v0])
+    batch = schwarzschild_phase2_batch_native(
+        y0.reshape(1, 8), 1.0, 0.1, 3000, 80.0
+    )
+    py = trace_null_geodesic_3d(
+        x0,
+        v0,
+        m=1.0,
+        dlambda=0.1,
+        max_steps=3000,
+        r_escape=80.0,
+        store_samples=True,
+    )
+    expected = detect_equatorial_crossing_state(
+        py.theta_samples, py.r_samples, py.vt_samples, py.vphi_samples
+    )
+
+    assert expected is not None
+    assert int(batch["disk_hit"][0]) == 1
+    assert float(batch["disk_r_cross"][0]) == pytest.approx(
+        expected.r_cross, abs=1e-9
+    )
+    assert float(batch["disk_vt"][0]) == pytest.approx(
+        expected.vt_cross, abs=1e-9
+    )
+    assert float(batch["disk_vph"][0]) == pytest.approx(
+        expected.vph_cross, abs=1e-9
+    )
+    assert float(batch["eq_r_cross"][0]) == pytest.approx(
+        expected.r_cross, abs=1e-9
+    )
+
+
+def test_native_phase2_batch_returns_nan_for_no_disk_crossing() -> None:
+    if not batch_native_available():
+        pytest.skip("Extension blackhole_ray_tracer._native_phase2 not installed")
+
+    y0 = np.array(
+        [[0.0, 30.0, np.pi / 2.0, 0.0, 1.0, -1.0, 0.0, 0.0]],
+        dtype=np.float64,
+    )
+    result = schwarzschild_phase2_batch_native(y0, 1.0, 0.1, 10, 80.0)
+
+    assert int(result["disk_hit"][0]) == 0
+    assert math.isnan(float(result["disk_r_cross"][0]))
+    assert math.isnan(float(result["disk_vt"][0]))
+    assert math.isnan(float(result["disk_vph"][0]))
+    assert math.isnan(float(result["eq_r_cross"][0]))
