@@ -69,11 +69,18 @@ y0[i*8 + 7] = v^phi
 | `out_steps_taken[i]`   | `int`      | `int32`     | Steps consumed |
 | `out_termination_r[i]` | `double`   | `float64`   | r at termination |
 | `out_r_min[i]`         | `double`   | `float64`   | Min r reached (NaN if none) |
-| `out_eq_r_cross[i]`    | `double`   | `float64`   | r at first equatorial plane crossing (θ=π/2), NaN if none |
+| `out_eq_r_cross[i]`    | `double`   | `float64`   | Compatibility alias for first crossing radius |
+| `out_disk_hit[i]`      | `int`      | `int32`     | 1 if first strict equatorial crossing exists |
+| `out_disk_r_cross[i]`  | `double`   | `float64`   | Interpolated radius at first crossing |
+| `out_disk_vt[i]`       | `double`   | `float64`   | Interpolated v^t at first crossing |
+| `out_disk_vph[i]`      | `double`   | `float64`   | Interpolated v^phi at first crossing |
 
-The `eq_r_cross` output enables disk coloring in the batch render path without storing full
-per-ray trajectories. A sign change in `θ − π/2` between consecutive accepted steps signals a
-crossing; the kernel linearly interpolates `r` between the two states.
+`out_disk_*` belongs to `bh_rt_schwarzschild_phase2_batch_trace_disk` and its
+Python bridges. `out_eq_r_cross` remains in the legacy C API as an alias.
+All disk values are NaN when no crossing occurs.
+
+A sign change in `theta - pi/2` between consecutive accepted steps signals a
+crossing. The implementation linearly interpolates r, v^t, and v^phi.
 
 ### Shared scalars
 
@@ -82,12 +89,16 @@ All rays in a batch share: `m`, `dlambda`, `max_steps`, `r_escape`, `r_horizon_e
 ### Python bridge shape convention
 
 ```python
-y0_batch: np.ndarray  # shape (N, 8), dtype float64, C-contiguous
-out_status: np.ndarray        # shape (N,), dtype int32
-out_steps_taken: np.ndarray   # shape (N,), dtype int32
+y0_batch: np.ndarray       # shape (N, 8), dtype float64, C-contiguous
+out_status: np.ndarray     # shape (N,), dtype int32
+out_steps_taken: np.ndarray # shape (N,), dtype int32
 out_termination_r: np.ndarray # shape (N,), dtype float64
-out_r_min: np.ndarray         # shape (N,), dtype float64
-out_eq_r_cross: np.ndarray    # shape (N,), dtype float64  — NaN when no crossing
+out_r_min: np.ndarray      # shape (N,), dtype float64
+out_eq_r_cross: np.ndarray # shape (N,), dtype float64  — compatibility alias
+out_disk_hit: np.ndarray   # shape (N,), dtype int32   — 0 or 1
+out_disk_r_cross: np.ndarray # shape (N,), dtype float64 — NaN when no crossing
+out_disk_vt: np.ndarray    # shape (N,), dtype float64 — NaN when no crossing
+out_disk_vph: np.ndarray   # shape (N,), dtype float64 — NaN when no crossing
 ```
 
 ### Kerr batch storage

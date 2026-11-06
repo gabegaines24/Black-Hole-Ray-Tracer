@@ -35,6 +35,7 @@ clean:
 
 # ── Windows (nmake) alternative ───────────────────────────────────────────────
 # On Windows use:
+#
 #   nvcc -O2 -arch=sm_75 -I..\include --compiler-options /LD ^
-#        -o ..\..\build\bh_rt_phase2_cuda.dll ^
+#        -o ..\..\build\libbh_rt_phase2_cuda.dll ^
 #        bh_rt_schwarzschild_phase2_batch.cu

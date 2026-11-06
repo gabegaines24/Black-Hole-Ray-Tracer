@@ -5,17 +5,20 @@
  * to the CPU batch API (docs/STATE_API.md) so the same PyBind11 bridge can
  * dispatch to either backend at runtime.
  *
- * Build (requires CUDA 11+ and MSVC/GCC):
- *   nvcc -O2 -arch=sm_75 -Iinclude --compiler-options -fPIC -shared \
- *        -o libbh_rt_phase2_cuda.so \
+ *   nvcc -O2 -arch=sm_75 -I kernel/include --compiler-options -fPIC -shared \
+ *        -o build/libbh_rt_phase2_cuda.so \
  *        kernel/cuda/bh_rt_schwarzschild_phase2_batch.cu \
  *        -lm
  *
- * Runtime selection: bridge/module_phase2_cuda.cpp (planned) checks for
- * `libbh_rt_phase2_cuda.so` at import time and falls back to CPU if absent.
+ * Runtime selection: native_phase2_cuda.py loads this optional library and
+ * raises an explicit error when a requested CUDA backend is unavailable.
  */
 
+#include "bh_rt_schwarzschild_phase2_cuda.h"
+
+#include <cuda_runtime.h>
 #include <math.h>
+#include <stdint.h>
 #include <stddef.h>
 
 /* Status constants (mirror bh_rt_status.h for CUDA compilation). */
@@ -113,26 +116,32 @@ __device__ static void d_rk4_step(double lam, double *y, double dlambda, double 
 /* ── kernel ────────────────────────────────────────────────────────────────── */
 
 extern "C" __global__ void bh_rt_phase2_batch_kernel(
-    const double *y0,          /* (N, 8) row-major */
+    const double *y0,
     int n,
     double m,
     double dlambda,
     int max_steps,
     double r_escape,
     double r_horizon_epsilon,
-    int    *out_status,
-    int    *out_steps_taken,
+    int *out_status,
+    int *out_steps_taken,
     double *out_termination_r,
-    double *out_r_min)
-{
+    double *out_r_min,
+    int *out_disk_hit,
+    double *out_disk_r_cross,
+    double *out_disk_vt,
+    double *out_disk_vph) {
   int ray = blockIdx.x * blockDim.x + threadIdx.x;
-  if (ray >= n) return;
+  if (ray >= n)
+    return;
 
   double y[N_STATE];
   const double *src = y0 + ray * N_STATE;
-  for (int k = 0; k < N_STATE; ++k) y[k] = src[k];
+  for (int k = 0; k < N_STATE; ++k)
+    y[k] = src[k];
 
-  double r_cap = 2.0 * m + r_horizon_epsilon;
+  const double pi_half = 1.5707963267948966;
+  const double r_cap = 2.0 * m + r_horizon_epsilon;
   d_renormalize(y, m);
 
   double r_min_val = INFINITY;
@@ -141,45 +150,87 @@ extern "C" __global__ void bh_rt_phase2_batch_kernel(
   double termination_r = NAN;
   int steps_taken = 0;
   int broke = 0;
+  int disk_hit = 0;
+  double disk_r_cross = NAN;
+  double disk_vt = NAN;
+  double disk_vph = NAN;
+  double previous_r = y[1];
+  double previous_dth = y[2] - pi_half;
+  double previous_vt = y[4];
+  double previous_vph = y[7];
 
   for (int step_idx = 0; step_idx < max_steps; ++step_idx) {
-    double r = y[1];
+    const double r = y[1];
+    const double current_dth = y[2] - pi_half;
     if (!d_all_finite(y)) {
       status = BH_RT_STATUS_NUMERICAL_ERROR;
-      termination_r = r; steps_taken = step_idx; broke = 1; break;
+      termination_r = r;
+      steps_taken = step_idx;
+      broke = 1;
+      break;
     }
     if (r < r_cap) {
       status = BH_RT_STATUS_CAPTURED;
-      termination_r = r; steps_taken = step_idx; broke = 1; break;
+      termination_r = r;
+      steps_taken = step_idx;
+      broke = 1;
+      break;
     }
     if (r > r_escape) {
       status = BH_RT_STATUS_ESCAPED;
-      termination_r = r; steps_taken = step_idx; broke = 1; break;
+      termination_r = r;
+      steps_taken = step_idx;
+      broke = 1;
+      break;
     }
-    if (isfinite(r)) r_min_val = fmin(r_min_val, r);
+    r_min_val = fmin(r_min_val, r);
+
+    if (step_idx > 0 && !disk_hit && previous_dth * current_dth < 0.0) {
+      double alpha =
+          fabs(previous_dth) /
+          (fabs(previous_dth) + fabs(current_dth) + 1e-30);
+      disk_hit = 1;
+      disk_r_cross = previous_r * (1.0 - alpha) + r * alpha;
+      disk_vt = previous_vt * (1.0 - alpha) + y[4] * alpha;
+      disk_vph = previous_vph * (1.0 - alpha) + y[7] * alpha;
+    }
+    previous_r = r;
+    previous_dth = current_dth;
+    previous_vt = y[4];
+    previous_vph = y[7];
+
     d_rk4_step(lam, y, dlambda, m);
-    if ((step_idx % 4) == 0) d_renormalize(y, m);
+    if ((step_idx % 4) == 0)
+      d_renormalize(y, m);
     lam += dlambda;
     steps_taken = step_idx + 1;
   }
 
-  if (!broke) termination_r = y[1];
+  if (!broke)
+    termination_r = y[1];
   if (status == BH_RT_STATUS_MAX_STEPS) {
     termination_r = y[1];
-    if (isfinite(y[1])) r_min_val = fmin(r_min_val, y[1]);
-    if (!d_all_finite(y)) status = BH_RT_STATUS_NUMERICAL_ERROR;
+    if (isfinite(y[1]))
+      r_min_val = fmin(r_min_val, y[1]);
+    if (!d_all_finite(y))
+      status = BH_RT_STATUS_NUMERICAL_ERROR;
   }
-  if (!isfinite(r_min_val)) r_min_val = NAN;
+  if (!isfinite(r_min_val))
+    r_min_val = NAN;
 
-  out_status[ray]        = status;
-  out_steps_taken[ray]   = steps_taken;
+  out_status[ray] = status;
+  out_steps_taken[ray] = steps_taken;
   out_termination_r[ray] = termination_r;
-  out_r_min[ray]         = r_min_val;
+  out_r_min[ray] = r_min_val;
+  out_disk_hit[ray] = disk_hit;
+  out_disk_r_cross[ray] = disk_r_cross;
+  out_disk_vt[ray] = disk_vt;
+  out_disk_vph[ray] = disk_vph;
 }
 
 /* ── host-side launcher (C linkage, callable from Python ctypes or bridge) ── */
 
-extern "C" void bh_rt_schwarzschild_phase2_batch_trace_cuda(
+extern "C" int32_t bh_rt_schwarzschild_phase2_batch_trace_cuda(
     const double *h_y0,
     int n,
     double m,
@@ -187,36 +238,180 @@ extern "C" void bh_rt_schwarzschild_phase2_batch_trace_cuda(
     int max_steps,
     double r_escape,
     double r_horizon_epsilon,
-    int    *h_status,
-    int    *h_steps,
+    int *h_status,
+    int *h_steps,
     double *h_term_r,
-    double *h_r_min)
-{
-  size_t y0_bytes     = (size_t)n * N_STATE * sizeof(double);
-  size_t int_bytes    = (size_t)n * sizeof(int);
-  size_t double_bytes = (size_t)n * sizeof(double);
+    double *h_r_min,
+    int *h_disk_hit,
+    double *h_disk_r_cross,
+    double *h_disk_vt,
+    double *h_disk_vph) {
+  if (n < 0 || max_steps < 0 ||
+      !(isfinite(m) && isfinite(dlambda) && isfinite(r_escape) &&
+        isfinite(r_horizon_epsilon)) ||
+      m <= 0.0 || dlambda <= 0.0 || r_escape <= 0.0 ||
+      r_horizon_epsilon < 0.0)
+    return static_cast<int32_t>(cudaErrorInvalidValue);
+  if (n == 0)
+    return static_cast<int32_t>(cudaSuccess);
+  if (h_y0 == nullptr || h_status == nullptr || h_steps == nullptr ||
+      h_term_r == nullptr || h_r_min == nullptr || h_disk_hit == nullptr ||
+      h_disk_r_cross == nullptr || h_disk_vt == nullptr ||
+      h_disk_vph == nullptr)
+    return static_cast<int32_t>(cudaErrorInvalidValue);
 
-  double *d_y0; int *d_status, *d_steps; double *d_term_r, *d_r_min;
-  cudaMalloc(&d_y0,     y0_bytes);
-  cudaMalloc(&d_status, int_bytes);
-  cudaMalloc(&d_steps,  int_bytes);
-  cudaMalloc(&d_term_r, double_bytes);
-  cudaMalloc(&d_r_min,  double_bytes);
+  const size_t ray_count = static_cast<size_t>(n);
+  const size_t state_bytes = N_STATE * sizeof(double);
+  if (ray_count > static_cast<size_t>(-1) / state_bytes)
+    return static_cast<int32_t>(cudaErrorInvalidValue);
+  const size_t y0_bytes = ray_count * state_bytes;
+  const size_t int_bytes = ray_count * sizeof(int);
+  const size_t double_bytes = ray_count * sizeof(double);
 
-  cudaMemcpy(d_y0, h_y0, y0_bytes, cudaMemcpyHostToDevice);
+  double *d_y0 = nullptr;
+  int *d_status = nullptr;
+  int *d_steps = nullptr;
+  double *d_term_r = nullptr;
+  double *d_r_min = nullptr;
+  int *d_disk_hit = nullptr;
+  double *d_disk_r_cross = nullptr;
+  double *d_disk_vt = nullptr;
+  double *d_disk_vph = nullptr;
+  const int block = 128;
+  const int grid = static_cast<int>(
+      (ray_count + static_cast<size_t>(block) - 1) / static_cast<size_t>(block));
+  int32_t result = static_cast<int32_t>(cudaSuccess);
+  cudaError_t error = cudaSuccess;
 
-  int block = 128;
-  int grid  = (n + block - 1) / block;
+  error = cudaMalloc(reinterpret_cast<void **>(&d_y0), y0_bytes);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMalloc(reinterpret_cast<void **>(&d_status), int_bytes);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMalloc(reinterpret_cast<void **>(&d_steps), int_bytes);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMalloc(reinterpret_cast<void **>(&d_term_r), double_bytes);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMalloc(reinterpret_cast<void **>(&d_r_min), double_bytes);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMalloc(reinterpret_cast<void **>(&d_disk_hit), int_bytes);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMalloc(reinterpret_cast<void **>(&d_disk_r_cross), double_bytes);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMalloc(reinterpret_cast<void **>(&d_disk_vt), double_bytes);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMalloc(reinterpret_cast<void **>(&d_disk_vph), double_bytes);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+
+  error = cudaMemcpy(d_y0, h_y0, y0_bytes, cudaMemcpyHostToDevice);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+
   bh_rt_phase2_batch_kernel<<<grid, block>>>(
-      d_y0, n, m, dlambda, max_steps, r_escape, r_horizon_epsilon,
-      d_status, d_steps, d_term_r, d_r_min);
-  cudaDeviceSynchronize();
+      d_y0, n, m, dlambda, max_steps, r_escape, r_horizon_epsilon, d_status,
+      d_steps, d_term_r, d_r_min, d_disk_hit, d_disk_r_cross, d_disk_vt,
+      d_disk_vph);
+  error = cudaGetLastError();
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaDeviceSynchronize();
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
 
-  cudaMemcpy(h_status, d_status, int_bytes,    cudaMemcpyDeviceToHost);
-  cudaMemcpy(h_steps,  d_steps,  int_bytes,    cudaMemcpyDeviceToHost);
-  cudaMemcpy(h_term_r, d_term_r, double_bytes, cudaMemcpyDeviceToHost);
-  cudaMemcpy(h_r_min,  d_r_min,  double_bytes, cudaMemcpyDeviceToHost);
+  error = cudaMemcpy(h_status, d_status, int_bytes, cudaMemcpyDeviceToHost);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMemcpy(h_steps, d_steps, int_bytes, cudaMemcpyDeviceToHost);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMemcpy(h_term_r, d_term_r, double_bytes, cudaMemcpyDeviceToHost);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMemcpy(h_r_min, d_r_min, double_bytes, cudaMemcpyDeviceToHost);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMemcpy(
+      h_disk_hit, d_disk_hit, int_bytes, cudaMemcpyDeviceToHost);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMemcpy(
+      h_disk_r_cross, d_disk_r_cross, double_bytes, cudaMemcpyDeviceToHost);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMemcpy(h_disk_vt, d_disk_vt, double_bytes, cudaMemcpyDeviceToHost);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
+  error = cudaMemcpy(
+      h_disk_vph, d_disk_vph, double_bytes, cudaMemcpyDeviceToHost);
+  if (error != cudaSuccess) {
+    result = static_cast<int32_t>(error);
+    goto cleanup;
+  }
 
-  cudaFree(d_y0); cudaFree(d_status); cudaFree(d_steps);
-  cudaFree(d_term_r); cudaFree(d_r_min);
+cleanup:
+#define BH_RT_CUDA_FREE(pointer)                                              \
+  do {                                                                        \
+    if ((pointer) != nullptr) {                                               \
+      error = cudaFree(pointer);                                              \
+      if (result == static_cast<int32_t>(cudaSuccess) && error != cudaSuccess) \
+        result = static_cast<int32_t>(error);                                \
+    }                                                                         \
+  } while (0)
+  BH_RT_CUDA_FREE(d_disk_vph);
+  BH_RT_CUDA_FREE(d_disk_vt);
+  BH_RT_CUDA_FREE(d_disk_r_cross);
+  BH_RT_CUDA_FREE(d_disk_hit);
+  BH_RT_CUDA_FREE(d_r_min);
+  BH_RT_CUDA_FREE(d_term_r);
+  BH_RT_CUDA_FREE(d_steps);
+  BH_RT_CUDA_FREE(d_status);
+  BH_RT_CUDA_FREE(d_y0);
+#undef BH_RT_CUDA_FREE
+  return result;
 }

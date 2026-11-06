@@ -18,10 +18,7 @@ def test_render_cuda_batch_backend() -> None:
         max_steps=400,
         use_cuda_phase2=True,
     )
-    try:
-        rgb, stats = render_schwarzschild_3d_image(cfg)
-    except RuntimeError as exc:
-        pytest.skip(f"CUDA runtime unavailable: {exc}")
+    rgb, stats = render_schwarzschild_3d_image(cfg)
 
     assert rgb.shape == (8, 8, 3)
     assert stats["backend"] == "cuda_batch"
@@ -32,5 +29,22 @@ def test_render_cuda_flag_raises_without_lib() -> None:
     if cuda_batch_available():
         pytest.skip("CUDA lib present; cannot test missing-lib path")
     cfg = Phase2RenderConfig(width=4, height=4, use_cuda_phase2=True)
+    with pytest.raises(RuntimeError, match="CUDA batch library"):
+        render_schwarzschild_3d_image(cfg)
+
+
+def test_render_cuda_request_does_not_fallback_to_native(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "blackhole_ray_tracer.phase2_render.cuda_batch_available", lambda: False
+    )
+    monkeypatch.setattr(
+        "blackhole_ray_tracer.phase2_render.native_phase2_available", lambda: True
+    )
+    cfg = Phase2RenderConfig(
+        width=4,
+        height=4,
+        use_native_phase2=True,
+        use_cuda_batch=True,
+    )
     with pytest.raises(RuntimeError, match="CUDA batch library"):
         render_schwarzschild_3d_image(cfg)

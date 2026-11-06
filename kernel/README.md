@@ -63,8 +63,8 @@ export BLACKHOLE_CUDA_LIB=build/libbh_rt_phase2_cuda.so
 uv run python -c "from blackhole_ray_tracer.native_phase2_cuda import cuda_batch_available; print(cuda_batch_available())"
 ```
 
-The CUDA kernel uses the same `(N×8)` input layout and the same four output arrays as the CPU batch
-kernel — see `docs/STATE_API.md`.
+The CUDA kernel uses the same `(N×8)` input layout and disk crossing outputs as the CPU
+batch path. See `docs/STATE_API.md` for output arrays and compatibility aliases.
 
 ## Tests
 

@@ -5,7 +5,7 @@ explicit errors for missing libraries or failed host/device operations.
 
 The CUDA library is NOT built by default (requires nvcc + GPU). Build with:
 
-    make -C kernel cuda
+    make -C kernel/cuda cuda_batch
 
 Then set BLACKHOLE_CUDA_LIB=/path/to/libbh_rt_phase2_cuda.so, or place the
 file in build/libbh_rt_phase2_cuda.so at the repo root.
@@ -30,15 +30,21 @@ def _find_cuda_lib() -> Path | None:
     env = os.environ.get("BLACKHOLE_CUDA_LIB", "").strip()
     if env:
         p = Path(env)
-        return p if p.exists() else None
-    candidates = [
-        Path(__file__).resolve().parents[2] / "build" / "libbh_rt_phase2_cuda.so",
-        Path(__file__).resolve().parents[2] / "build" / "libbh_rt_phase2_cuda.dll",
-        Path(__file__).resolve().parents[2] / "libbh_rt_phase2_cuda.so",
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
+        return p if p.is_file() else None
+
+    package_dir = Path(__file__).resolve().parent
+    repo_root = package_dir.parents[1]
+    names = (
+        "libbh_rt_phase2_cuda.so",
+        "libbh_rt_phase2_cuda.dylib",
+        "libbh_rt_phase2_cuda.dll",
+    )
+    roots = (package_dir, repo_root / "build", repo_root)
+    for root in roots:
+        for name in names:
+            candidate = root / name
+            if candidate.is_file():
+                return candidate
     return None
 
 
@@ -83,15 +89,18 @@ def cuda_batch_available() -> bool:
 
 
 def _empty_cuda_result() -> dict[str, Any]:
+    empty_i = np.empty(0, dtype=np.int32)
+    empty_f = np.empty(0, dtype=np.float64)
     return {
-        "status": np.empty(0, dtype=np.int32),
-        "steps_taken": np.empty(0, dtype=np.int32),
-        "termination_r": np.empty(0, dtype=np.float64),
-        "r_min": np.empty(0, dtype=np.float64),
-        "disk_hit": np.empty(0, dtype=np.int32),
-        "disk_r_cross": np.empty(0, dtype=np.float64),
-        "disk_vt": np.empty(0, dtype=np.float64),
-        "disk_vph": np.empty(0, dtype=np.float64),
+        "status": empty_i,
+        "steps_taken": empty_i,
+        "termination_r": empty_f,
+        "r_min": empty_f,
+        "disk_hit": empty_i,
+        "disk_r_cross": empty_f,
+        "disk_vt": empty_f,
+        "disk_vph": empty_f,
+        "eq_r_cross": empty_f,
     }
 
 
@@ -117,8 +126,8 @@ def schwarzschild_phase2_batch_cuda(
         raise ValueError("m must be finite and positive.")
     if not np.isfinite(dlambda) or dlambda <= 0.0:
         raise ValueError("dlambda must be finite and positive.")
-    if isinstance(max_steps, bool) or not isinstance(max_steps, int) or max_steps <= 0:
-        raise ValueError("max_steps must be a positive integer.")
+    if isinstance(max_steps, bool) or not isinstance(max_steps, int) or max_steps < 0:
+        raise ValueError("max_steps must be a non-negative integer.")
     if max_steps > np.iinfo(np.int32).max:
         raise ValueError("max_steps exceeds int32 ABI range.")
     if not np.isfinite(r_escape) or r_escape <= 0.0:
@@ -130,15 +139,15 @@ def schwarzschild_phase2_batch_cuda(
     lib = _load_cuda_lib()
     if lib is None:
         raise RuntimeError(
-            "CUDA batch library not found. Build with `make -C kernel cuda` "
+            "CUDA batch library not found. Build with `make -C kernel/cuda cuda_batch` "
             "and set BLACKHOLE_CUDA_LIB=<path>."
         )
     batch = np.ascontiguousarray(batch)
     flat = batch.ravel()
     c_y0 = flat.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-
     out_status = np.empty(n, dtype=np.int32)
     out_steps = np.empty(n, dtype=np.int32)
+
     out_term_r = np.empty(n, dtype=np.float64)
     out_r_min = np.empty(n, dtype=np.float64)
     out_disk_hit = np.empty(n, dtype=np.int32)
@@ -174,4 +183,5 @@ def schwarzschild_phase2_batch_cuda(
         "disk_r_cross": out_disk_r,
         "disk_vt": out_disk_vt,
         "disk_vph": out_disk_vph,
+        "eq_r_cross": out_disk_r,
     }

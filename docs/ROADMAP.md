@@ -88,7 +88,7 @@ Teaching notes remain in **`plan.txt`** (Phase 1 build sheet).
 | Kerr null geodesic integrator (Python RK4) | Done | `phase3_geodesic.py` |
 | `KerrRenderConfig` + dispatcher | Done | `phase3_types.py`, `phase3_render.py` |
 | Kerr parity / E/L conservation tests | Done | `tests/test_phase3_kerr.py` |
-| Disk detection in native batch path (`eq_r_cross`) | Done: true SoA Kerr workspace, interpolated crossing output, `bridge/`, and `phase2_render.py` |
+| Disk detection in native batch path (interpolated crossing observables) | Done: CPU bridge and renderer consume disk hit, radius, v^t, and v^phi |
 | Anti-aliasing (supersample + box-average) | Done | `phase2_types.py` supersample field, `phase2_render.py`, `--aa` flag |
 | ML scaffold (schema, dataset, surrogate, gate) | Done | `ml/` |
 | ML end-to-end tests | Done | `tests/test_ml.py` |
@@ -178,7 +178,7 @@ Installation: typically `PYTHONPATH=src` when developing from checkout without r
 - [x] CUDA batch kernel (`kernel/cuda/`) + Python ctypes bridge (`native_phase2_cuda.py`).
 - [x] **Ignore `*.ppm` in `.gitignore`** — render outputs are binary and bloat history; keep them untracked (policy; see repo `.gitignore`).
 - [x] Kerr Boyer–Lindquist geodesic integrator (`phase3_christoffel.py`, `phase3_geodesic.py`) + render dispatcher + parity / conservation tests.
-- [x] Equatorial crossing output in C batch kernel (`out_eq_r_cross`) → disk detection in native batch path.
+- [x] Interpolated disk crossing observables in C batch kernel (`disk_hit`, `disk_r_cross`, `disk_vt`, `disk_vph`) and Python renderer.
 - [x] Anti-aliasing supersample (`Phase2RenderConfig.supersample`, `--aa` CLI flag).
 - [x] ML end-to-end tests (`tests/test_ml.py`): schema, dataset shapes, surrogate forward, gate routing.
 - [x] CUDA standalone build path (`kernel/cuda/Makefile`, `build/.gitkeep`, optional CI step).
