@@ -137,7 +137,7 @@ The worktree was already dirty before this plan. This classification uses paths,
 |---|---|---|
 | CUDA input boundary tests | Pass | 1 passed; malformed, nonfinite, empty, and oversized cases covered |
 | CUDA parity test | Skipped | No CUDA library available locally |
-| `make -C kernel cuda` | Expected unavailable | Precise `nvcc not found (nvcc)` diagnostic |
+| `make -C kernel/cuda cuda_batch` | Expected unavailable | CUDA compiler unavailable locally; CUDA parity remains skipped |
 | Headless preview routing | Pass | Native/disk/CUDA flags propagated; 4x4 frame rendered without GUI |
 | CPU native benchmark | Pass | macOS arm64, 8x8, 300 steps, native batch, 17,905 rays/s observed |
 

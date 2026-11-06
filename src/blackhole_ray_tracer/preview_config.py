@@ -176,7 +176,7 @@ def build_preview_config(args: PreviewBuildArgs) -> tuple[Phase2RenderConfig, li
 
 def describe_requested_backend(cfg: Phase2RenderConfig) -> str:
     """Human-readable label for the configured backend flags (before render)."""
-    if cfg.use_cuda_batch and cuda_batch_available():
+    if (cfg.use_cuda_batch or cfg.use_cuda_phase2) and cuda_batch_available():
         return "cuda_batch"
     if cfg.use_native_phase2 and batch_native_available():
         return "native_batch"

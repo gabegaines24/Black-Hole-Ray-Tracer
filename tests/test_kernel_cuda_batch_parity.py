@@ -129,16 +129,22 @@ def _call_cpu_batch(fn, y0: np.ndarray, m: float, dlambda: float, max_steps: int
     c_steps = np.empty(n, dtype=np.int32)
     c_term_r = np.empty(n, dtype=np.float64)
     c_r_min = np.empty(n, dtype=np.float64)
-    c_eq_r_cross = np.empty(n, dtype=np.float64)
+    c_disk_hit = np.empty(n, dtype=np.int32)
+    c_disk_r = np.empty(n, dtype=np.float64)
+    c_disk_vt = np.empty(n, dtype=np.float64)
+    c_disk_vph = np.empty(n, dtype=np.float64)
     fn(
         c_y0, n, m, dlambda, max_steps, r_escape, r_horizon_epsilon,
         c_status.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
         c_steps.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
         c_term_r.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         c_r_min.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-        c_eq_r_cross.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        c_disk_hit.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+        c_disk_r.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        c_disk_vt.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        c_disk_vph.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
     )
-    return c_status, c_steps, c_term_r, c_r_min, c_eq_r_cross
+    return c_status, c_steps, c_term_r, c_r_min, c_disk_hit, c_disk_r, c_disk_vt, c_disk_vph
 
 
 def _call_cuda_batch(fn, y0: np.ndarray, m: float, dlambda: float, max_steps: int,
@@ -150,8 +156,11 @@ def _call_cuda_batch(fn, y0: np.ndarray, m: float, dlambda: float, max_steps: in
     c_steps = np.empty(n, dtype=np.int32)
     c_term_r = np.empty(n, dtype=np.float64)
     c_r_min = np.empty(n, dtype=np.float64)
-    c_eq_r_cross = np.empty(n, dtype=np.float64)
-    fn(
+    c_disk_hit = np.empty(n, dtype=np.int32)
+    c_disk_r = np.empty(n, dtype=np.float64)
+    c_disk_vt = np.empty(n, dtype=np.float64)
+    c_disk_vph = np.empty(n, dtype=np.float64)
+    error_code = fn(
         c_y0, ctypes.c_int(n),
         ctypes.c_double(m), ctypes.c_double(dlambda),
         ctypes.c_int(max_steps), ctypes.c_double(r_escape),
@@ -160,9 +169,14 @@ def _call_cuda_batch(fn, y0: np.ndarray, m: float, dlambda: float, max_steps: in
         c_steps.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
         c_term_r.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         c_r_min.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-        c_eq_r_cross.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        c_disk_hit.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+        c_disk_r.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        c_disk_vt.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        c_disk_vph.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
     )
-    return c_status, c_steps, c_term_r, c_r_min, c_eq_r_cross
+    if int(error_code) != 0:
+        raise RuntimeError(f"CUDA batch execution failed with error code {error_code}.")
+    return c_status, c_steps, c_term_r, c_r_min, c_disk_hit, c_disk_r, c_disk_vt, c_disk_vph
 
 
 def _close(a: float, b: float, atol: float) -> None:
@@ -192,7 +206,7 @@ def batch_backends(tmp_path_factory: pytest.TempPathFactory):
         pytest.skip("CUDA batch compile failed")
 
     cpu = ctypes.CDLL(str(cpu_lib))
-    cpu_fn = cpu.bh_rt_schwarzschild_phase2_batch_trace
+    cpu_fn = cpu.bh_rt_schwarzschild_phase2_batch_trace_disk
     cpu_fn.argtypes = [
         ctypes.POINTER(ctypes.c_double),
         ctypes.c_int,
@@ -202,6 +216,9 @@ def batch_backends(tmp_path_factory: pytest.TempPathFactory):
         ctypes.c_double,
         ctypes.c_double,
         ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_double),
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.c_double),
         ctypes.POINTER(ctypes.c_double),
@@ -223,9 +240,12 @@ def batch_backends(tmp_path_factory: pytest.TempPathFactory):
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.c_double),
         ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_double),
         ctypes.POINTER(ctypes.c_double),
     ]
-    cuda_fn.restype = None
+    cuda_fn.restype = ctypes.c_int32
 
     return cpu_fn, cuda_fn
 
@@ -242,12 +262,15 @@ def test_cuda_batch_parity_vs_cpu(batch_backends, width, height, dlambda, max_st
     cpu_out = _call_cpu_batch(cpu_fn, y0, m, dlambda, max_steps, r_escape, r_hep)
     cuda_out = _call_cuda_batch(cuda_fn, y0, m, dlambda, max_steps, r_escape, r_hep)
 
-    c_status, c_steps, c_term_r, c_r_min, c_eq = cpu_out
-    g_status, g_steps, g_term_r, g_r_min, g_eq = cuda_out
+    c_status, c_steps, c_term_r, c_r_min, c_disk_hit, c_disk_r, c_disk_vt, c_disk_vph = cpu_out
+    g_status, g_steps, g_term_r, g_r_min, g_disk_hit, g_disk_r, g_disk_vt, g_disk_vph = cuda_out
 
     for i in range(len(y0)):
         assert int(c_status[i]) == int(g_status[i]), f"ray {i}: status"
         assert int(c_steps[i]) == int(g_steps[i]), f"ray {i}: steps"
+        assert int(c_disk_hit[i]) == int(g_disk_hit[i]), f"ray {i}: disk hit"
         _close(float(c_term_r[i]), float(g_term_r[i]), atol=1e-8)
         _close(float(c_r_min[i]), float(g_r_min[i]), atol=1e-8)
-        _close(float(c_eq[i]), float(g_eq[i]), atol=1e-8)
+        _close(float(c_disk_r[i]), float(g_disk_r[i]), atol=1e-8)
+        _close(float(c_disk_vt[i]), float(g_disk_vt[i]), atol=1e-8)
+        _close(float(c_disk_vph[i]), float(g_disk_vph[i]), atol=1e-8)
